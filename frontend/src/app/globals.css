@@ -1,0 +1,14 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+::selection {
+  background: #e0e7ff;
+}
+
+/* Párrafo activo del lector: resaltado con borde guía (RF-06) */
+.parrafo-activo {
+  background: linear-gradient(90deg, #eef2ff 0%, #ffffff 100%);
+  border-left: 4px solid #4f46e5;
+  box-shadow: 0 1px 10px rgba(79, 70, 229, 0.15);
+}

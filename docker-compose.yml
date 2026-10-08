@@ -1,0 +1,126 @@
+name: whispertext
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-wispertext}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cambia-me-dev}
+      POSTGRES_DB: ${POSTGRES_DB:-wispertext}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-wispertext} -d ${POSTGRES_DB:-wispertext}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  api:
+    build: ./backend
+    command: uvicorn wispertext.api.main:app --host 0.0.0.0 --port 8000
+    environment: &backend_env
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-wispertext}:${POSTGRES_PASSWORD:-cambia-me-dev}@db:5432/${POSTGRES_DB:-wispertext}
+      REDIS_URL: redis://redis:6379/0
+      MEDIA_DIR: /data/media
+      MODELS_DIR: /data/models
+      BONSAI_BASE_URL: ${BONSAI_BASE_URL:-http://host.docker.internal:4687/v1}
+      BONSAI_MODEL: ${BONSAI_MODEL:-ternary-bonsai-8b}
+      BONSAI_ENABLED: ${BONSAI_ENABLED:-true}
+      PIPER_VOICE_DEFAULT: ${PIPER_VOICE_DEFAULT:-es_AR-daniela-high}
+      PIPER_VOICES_EXTRA: ${PIPER_VOICES_EXTRA:-en_US-lessac-high,en_US-ryan-high}
+      TTS_FORMAT: ${TTS_FORMAT:-mp3}
+      TTS_BITRATE: ${TTS_BITRATE:-96k}
+      TESSERACT_LANGS: ${TESSERACT_LANGS:-spa+eng}
+      EXPORT_PAUSE_MS: ${EXPORT_PAUSE_MS:-600}
+      NORMALIZER_VERSION: ${NORMALIZER_VERSION:-v7}
+      CORS_ORIGINS: http://localhost:${FRONTEND_PORT:-3000},http://127.0.0.1:${FRONTEND_PORT:-3000}
+    ports:
+      - "127.0.0.1:${API_PORT:-8000}:8000"   # solo local (ver 01-seguridad del vault)
+    volumes:
+      - media:/data/media
+      - models:/data/models
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # Bonsai externo
+    restart: unless-stopped
+
+  worker:
+    build: ./backend
+    command: arq wispertext.worker.main.WorkerSettings
+    environment: *backend_env
+    volumes:
+      - media:/data/media
+      - models:/data/models
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2g
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  # Perfil completo: proxy único con cache de /media (activar con --profile completo)
+  nginx:
+    image: nginx:alpine
+    profiles: ["completo"]
+    ports:
+      - "127.0.0.1:8080:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - media:/data/media:ro
+    depends_on:
+      - frontend
+      - api
+    restart: unless-stopped
+
+  # Bonsai auto-hospedado (perfil "bonsai"): llama-server PrismML con el GGUF
+  # de backend/bonsai/models montado por volumen (sin re-descarga).
+  # OJO RAM: el 27B PTQ1_0 (~5.6 GB) necesita ~7 GB libres.
+  # Para usarlo: BONSAI_BASE_URL=http://bonsai:8080/v1 en .env
+  bonsai:
+    build: ./backend/bonsai
+    profiles: ["bonsai"]
+    environment:
+      BONSAI_GGUF: ${BONSAI_GGUF:-Ternary-Bonsai-2-27B-PTQ1_0.gguf}
+      BONSAI_ALIAS: ${BONSAI_MODEL:-ternary-bonsai-8b}
+      BONSAI_CTX: ${BONSAI_CTX:-8192}
+      BONSAI_NGL: ${BONSAI_NGL:-0}
+    volumes:
+      - ./backend/bonsai/models:/models
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  media:
+  models:
