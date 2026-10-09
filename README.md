@@ -33,7 +33,7 @@ Lo creé porque **necesito escuchar en lugar de leer**: documentos técnicos, pa
 |---|---|
 | 🔊 **Audio por párrafo** con **Piper** (voz por defecto: *Daniela*, español de Argentina; también inglés) | ▶️ **Lector horizontal**: clic en un párrafo → suena y **se resalta** con auto-scroll; reproductor fijo a la derecha |
 | 🧹 **Normalizador determinista** para lectura (acentos LaTeX, guiones, `T2∗`, griegas dichas en español, siglas…) | 📚 **Biblioteca**: portadas (subida o página 1 del PDF), búsqueda, título editable, cambiar voz, exportar, eliminar |
-| 🧠 **Ecuaciones con IA local (Bonsai, opcional)**: LaTeX → fórmulas reales con KaTeX + lectura hablada; sin LLM queda la imagen fiel | 🔁 **Reemplazo incremental**: sube una versión nueva del PDF y solo se regeneran los párrafos cambiados (cache por hash) |
+| 🧠 **Ecuaciones con IA local (Bonsai, opcional)**: LaTeX → fórmulas reales con KaTeX + lectura hablada; sin LLM queda la imagen fiel · **endpoint y modelo cambiables en Ajustes sin reinicio** (cualquier API OpenAI-compatible) | 🔁 **Reemplazo incremental**: sube una versión nueva del PDF y solo se regeneran los párrafos cambiados (cache por hash) |
 | 🖼️ **Figuras vectoriales y raster** recuperadas del PDF con su caption, en su posición | 📤 **Export** a un único MP3 con pausas |
 | 🔍 OCR (Tesseract spa+eng) para páginas escaneadas | ⚡ Escucha temprana: suenas lo ya sintetizado mientras el resto se genera |
 

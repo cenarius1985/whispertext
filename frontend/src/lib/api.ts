@@ -228,6 +228,64 @@ export function mediaUrl(path: string | null): string {
   return path ? `${API_URL}${path}` : "";
 }
 
+// ── Configuración del LLM en caliente (Ajustes) ─────────────────────────────
+
+export interface LLMConfig {
+  base_url: string;
+  model: string;
+  enabled: boolean;
+  source: string; // "archivo" (override) | "env" (.env)
+  env_default: { base_url: string; model: string };
+}
+
+export interface LLMVerifyResult {
+  ok: boolean;
+  model: string;
+  respuesta: string;
+  elapsed_ms: number;
+  detail: string;
+}
+
+export async function fetchLLMConfig(): Promise<LLMConfig> {
+  return json(await fetch(`${API_URL}/api/settings/llm`, { cache: "no-store" }));
+}
+
+export async function saveLLMConfig(
+  body: { base_url?: string; model?: string; enabled?: boolean }
+): Promise<LLMConfig> {
+  return json(
+    await fetch(`${API_URL}/api/settings/llm`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+  );
+}
+
+export async function resetLLMConfig(): Promise<LLMConfig> {
+  return json(await fetch(`${API_URL}/api/settings/llm`, { method: "DELETE" }));
+}
+
+export async function fetchLLMModels(baseUrl?: string): Promise<string[]> {
+  const qs = baseUrl ? `?base_url=${encodeURIComponent(baseUrl)}` : "";
+  const r = await json<{ modelos: string[] }>(
+    await fetch(`${API_URL}/api/settings/llm/models${qs}`, { cache: "no-store" })
+  );
+  return r.modelos;
+}
+
+export async function verifyLLM(
+  body?: { base_url?: string; model?: string }
+): Promise<LLMVerifyResult> {
+  return json(
+    await fetch(`${API_URL}/api/settings/llm/verify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body ?? {}),
+    })
+  );
+}
+
 export const ESTADOS: Record<string, { label: string; cls: string }> = {
   pending: { label: "En cola", cls: "bg-slate-100 text-slate-600" },
   extracting: { label: "Extrayendo", cls: "bg-amber-100 text-amber-700" },

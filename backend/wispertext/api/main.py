@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from wispertext.api.deps import close_arq
 from wispertext.api.routers import categories, documents, events, paragraphs, voices
+from wispertext.api.routers import settings as settings_router
 from wispertext.config import get_settings
 from wispertext.db import init_db
 
@@ -38,6 +39,7 @@ app.add_middleware(
 
 app.include_router(documents.router)
 app.include_router(categories.router)
+app.include_router(settings_router.router)
 app.include_router(paragraphs.router)
 app.include_router(voices.router)
 app.include_router(events.router)

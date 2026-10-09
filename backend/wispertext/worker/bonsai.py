@@ -11,6 +11,7 @@ import re
 import httpx
 
 from wispertext.config import get_settings
+from wispertext.llm_runtime import get_llm_config
 
 log = logging.getLogger("wispertext.bonsai")
 
@@ -34,8 +35,9 @@ def bonsai_formula(texto_lineal: str) -> dict | None:
     alimenta el render KaTeX del lector; "hablado" es la lectura en español
     para el TTS (patrón del pipeline texto_voz, Etapa 2).
     """
-    settings = get_settings()
-    if not settings.bonsai_enabled:
+    settings = get_settings()  # timeouts operativos
+    cfg = get_llm_config()  # base/model/enabled: override de Ajustes o .env
+    if not cfg["enabled"]:
         return None
     prompt = (
         "La siguiente línea viene de extraer un PDF científico y la notación "
@@ -48,9 +50,9 @@ def bonsai_formula(texto_lineal: str) -> dict | None:
     )
     try:
         resp = httpx.post(
-            f"{settings.bonsai_base_url.rstrip('/')}/chat/completions",
+            f"{cfg['base_url']}/chat/completions",
             json={
-                "model": settings.bonsai_model,
+                "model": cfg["model"],
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0,
                 "max_tokens": 500,
@@ -74,8 +76,9 @@ def bonsai_formula(texto_lineal: str) -> dict | None:
 
 def bonsai_is_editorial(texto: str, contexto: str = "") -> bool | None:
     """Clasifica un bloque dudoso como editorial. None = no se pudo decidir."""
-    settings = get_settings()
-    if not settings.bonsai_enabled:
+    settings = get_settings()  # timeouts operativos
+    cfg = get_llm_config()  # base/model/enabled: override de Ajustes o .env
+    if not cfg["enabled"]:
         return None
     prompt = (
         "Eres un clasificador para un conversor PDF→audiolibro. Decide si el "
@@ -88,9 +91,9 @@ def bonsai_is_editorial(texto: str, contexto: str = "") -> bool | None:
     )
     try:
         resp = httpx.post(
-            f"{settings.bonsai_base_url.rstrip('/')}/chat/completions",
+            f"{cfg['base_url']}/chat/completions",
             json={
-                "model": settings.bonsai_model,
+                "model": cfg["model"],
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0,
                 "max_tokens": 120,
@@ -111,8 +114,9 @@ def bonsai_is_editorial(texto: str, contexto: str = "") -> bool | None:
 
 def bonsai_translate(texto: str, destino: str) -> str | None:
     """Traducción asistida opcional (ADR-008). None = usar camino Argos."""
-    settings = get_settings()
-    if not settings.bonsai_enabled:
+    settings = get_settings()  # timeouts operativos
+    cfg = get_llm_config()  # base/model/enabled: override de Ajustes o .env
+    if not cfg["enabled"]:
         return None
     prompt = (
         f"Traduce al {destino} para ser leído en voz alta. Devuelve SOLO la "
@@ -120,9 +124,9 @@ def bonsai_translate(texto: str, destino: str) -> str | None:
     )
     try:
         resp = httpx.post(
-            f"{settings.bonsai_base_url.rstrip('/')}/chat/completions",
+            f"{cfg['base_url']}/chat/completions",
             json={
-                "model": settings.bonsai_model,
+                "model": cfg["model"],
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.2,
             },
