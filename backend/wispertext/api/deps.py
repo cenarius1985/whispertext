@@ -36,7 +36,18 @@ async def close_arq() -> None:
         _arq_pool = None
 
 
-ALLOWED_EXTENSIONS = {".pdf"}  # P2: .md, .txt, .docx, .epub
+ALLOWED_EXTENSIONS = {".pdf", ".txt", ".text", ".md", ".docx", ".html", ".htm", ".epub"}
+
+FORMATO_POR_EXT = {
+    ".pdf": "pdf",
+    ".txt": "txt",
+    ".text": "txt",
+    ".md": "md",
+    ".docx": "docx",
+    ".html": "html",
+    ".htm": "html",
+    ".epub": "epub",
+}
 
 
 async def save_upload(doc_key: str, upload: UploadFile) -> tuple[str, str, int]:
@@ -48,7 +59,11 @@ async def save_upload(doc_key: str, upload: UploadFile) -> tuple[str, str, int]:
     nombre = upload.filename or "documento.pdf"
     ext = Path(nombre).suffix.lower()
     if ext not in ALLOWED_EXTENSIONS:
-        raise HTTPException(415, f"tipo no permitido '{ext}' (solo PDF por ahora)")
+        raise HTTPException(
+            415,
+            f"tipo no permitido '{ext}' "
+            f"(pdf, txt, text, md, docx, html, epub)",
+        )
 
     safe = re.sub(r"[^\w.\- ]", "_", nombre)[:120] or "documento.pdf"
     folder = Path(settings.media_dir) / "pdfs"

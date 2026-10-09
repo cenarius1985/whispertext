@@ -23,3 +23,6 @@ backend/bonsai/models/
 .idea/
 Thumbs.db
 .DS_Store
+
+# artefactos de pruebas E2E locales
+backend/tests/_e2e/

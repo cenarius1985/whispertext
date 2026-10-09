@@ -12,6 +12,7 @@ MODULOS = [
     "tests.test_diffing",
     "tests.test_editorial",
     "tests.test_speakable",
+    "tests.test_extractors",
 ]
 
 

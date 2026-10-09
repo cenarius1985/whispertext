@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { useRef, useState } from "react";
 import {
+  ACCEPT_UPLOAD,
   Doc,
   ESTADOS,
+  FORMATOS,
   Voice,
   deleteDocument,
   exportDocument,
@@ -13,19 +15,49 @@ import {
   renameDocument,
   reprocessDocument,
   replaceDocument,
+  setDocCategories,
   uploadCover,
 } from "@/lib/api";
 
-export default function DocumentCard({ doc, onChanged }: { doc: Doc; onChanged: () => void }) {
+export default function DocumentCard({
+  doc,
+  onChanged,
+  onOrganize,
+  onFilterCat,
+  favId,
+}: {
+  doc: Doc;
+  onChanged: () => void;
+  onOrganize: () => void;
+  onFilterCat: (cid: string) => void;
+  favId: string | null;
+}) {
   const [busy, setBusy] = useState(false);
   const [menu, setMenu] = useState(false);
   const replaceRef = useRef<HTMLInputElement>(null);
   const coverRef = useRef<HTMLInputElement>(null);
   const est = ESTADOS[doc.estado] ?? { label: doc.estado, cls: "bg-slate-100 text-slate-600" };
+  const fmt = FORMATOS[doc.formato] ?? FORMATOS.pdf;
   const progreso =
     doc.progreso_indice != null && doc.total_parrafos_activos > 0
       ? Math.round(((doc.progreso_indice + 1) / doc.total_parrafos_activos) * 100)
       : 0;
+  const esFav = favId != null && doc.categorias.some((c) => c.id === favId);
+
+  const toggleFav = async () => {
+    if (favId == null) return;
+    setBusy(true);
+    try {
+      const ids = doc.categorias.map((c) => c.id).filter((id) => id !== favId);
+      if (!esFav) ids.push(favId);
+      await setDocCategories(doc.id, ids);
+      onChanged();
+    } catch (e) {
+      window.alert((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const cambiarVoz = async () => {
     setBusy(true);
@@ -85,6 +117,27 @@ export default function DocumentCard({ doc, onChanged }: { doc: Doc; onChanged: 
           >
             {est.label}
           </span>
+          <span
+            className={`absolute right-3 top-3 rounded-full px-2 py-1 text-[10px] font-bold tracking-wide ${fmt.cls}`}
+          >
+            {fmt.label}
+          </span>
+          {favId != null && (
+            <button
+              disabled={busy}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                toggleFav();
+              }}
+              className={`absolute bottom-3 right-3 grid h-8 w-8 place-items-center rounded-full text-lg backdrop-blur transition ${
+                esFav ? "bg-amber-400/90 text-white" : "bg-black/30 text-white/70 opacity-0 group-hover:opacity-100"
+              }`}
+              title={esFav ? "Quitar de Favoritos" : "Agregar a Favoritos"}
+            >
+              ★
+            </button>
+          )}
         </div>
       </Link>
 
@@ -92,6 +145,21 @@ export default function DocumentCard({ doc, onChanged }: { doc: Doc; onChanged: 
         <Link href={`/lector/${doc.id}`} className="line-clamp-2 font-semibold text-slate-900 hover:text-brand-600">
           {doc.titulo}
         </Link>
+        {doc.categorias.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {doc.categorias.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => onFilterCat(c.id)}
+                className="rounded-full px-2 py-0.5 text-xs hover:opacity-80"
+                style={{ backgroundColor: `${c.color}1a`, color: c.color }}
+                title={`Filtrar por ${c.nombre}`}
+              >
+                {c.icono} {c.nombre}
+              </button>
+            ))}
+          </div>
+        )}
         <p className="text-xs text-slate-400">
           v{doc.version_actual} · {doc.voz_clave ?? "—"} · {doc.idioma_lectura}
         </p>
@@ -112,6 +180,14 @@ export default function DocumentCard({ doc, onChanged }: { doc: Doc; onChanged: 
           >
             Leer
           </Link>
+          <button
+            disabled={busy}
+            onClick={onOrganize}
+            className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm text-slate-500 hover:bg-slate-50"
+            title="Organizar en categorías"
+          >
+            🏷
+          </button>
           <button
             disabled={busy}
             onClick={() => setMenu((m) => !m)}
@@ -183,7 +259,7 @@ export default function DocumentCard({ doc, onChanged }: { doc: Doc; onChanged: 
       <input
         ref={replaceRef}
         type="file"
-        accept=".pdf"
+        accept={ACCEPT_UPLOAD}
         hidden
         onChange={(e) => {
           const f = e.target.files?.[0];

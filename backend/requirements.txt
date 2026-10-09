@@ -16,3 +16,6 @@ pytest>=8.0
 pytest-asyncio>=0.23
 # Opcional (traducción local, ADR-008) — pesado (~1 GB con paquetes):
 # argostranslate>=1.9
+python-docx>=1.1
+beautifulsoup4>=4.12
+lxml>=5.2

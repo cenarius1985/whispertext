@@ -1,9 +1,23 @@
 export const API_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+export interface CategoryRef {
+  id: string;
+  nombre: string;
+  color: string;
+  icono: string;
+  es_sistema: boolean;
+}
+
+export interface Category extends CategoryRef {
+  total: number;
+}
+
 export interface Doc {
   id: string;
   titulo: string;
+  autor: string | null;
+  formato: string;
   estado: string;
   idioma_origen: string;
   idioma_lectura: string;
@@ -13,6 +27,8 @@ export interface Doc {
   total_parrafos_activos: number;
   portada_url: string | null;
   progreso_indice: number | null;
+  duracion_total_seg: number;
+  categorias: CategoryRef[];
   error: string | null;
 }
 
@@ -59,10 +75,47 @@ async function json<T>(res: Response): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-export async function fetchDocs(q?: string): Promise<Doc[]> {
+export async function fetchDocs(q?: string, categoriaId?: string): Promise<Doc[]> {
   const url = new URL(`${API_URL}/api/documents`);
   if (q) url.searchParams.set("q", q);
+  if (categoriaId) url.searchParams.set("categoria_id", categoriaId);
   return json(await fetch(url.toString(), { cache: "no-store" }));
+}
+
+export async function fetchCategories(): Promise<Category[]> {
+  return json(await fetch(`${API_URL}/api/categories`, { cache: "no-store" }));
+}
+
+export async function createCategory(
+  nombre: string,
+  color?: string,
+  icono?: string
+): Promise<Category> {
+  return json(
+    await fetch(`${API_URL}/api/categories`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nombre, color, icono }),
+    })
+  );
+}
+
+export async function updateCategory(
+  id: string,
+  opts: { nombre?: string; color?: string; icono?: string }
+): Promise<void> {
+  await json(
+    await fetch(`${API_URL}/api/categories/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(opts),
+    })
+  );
+}
+
+export async function deleteCategory(id: string): Promise<void> {
+  const res = await fetch(`${API_URL}/api/categories/${id}`, { method: "DELETE" });
+  if (!res.ok && res.status !== 204) throw new Error("no se pudo eliminar la categoría");
 }
 
 export async function fetchDoc(id: string): Promise<Doc> {
@@ -132,6 +185,22 @@ export async function renameDocument(id: string, titulo: string): Promise<void> 
   if (!res.ok) throw new Error("no se pudo renombrar");
 }
 
+export async function setDocCategories(id: string, categoryIds: string[]): Promise<void> {
+  const res = await fetch(`${API_URL}/api/documents/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ category_ids: categoryIds }),
+  });
+  if (!res.ok) {
+    let detail = "no se pudieron guardar las categorías";
+    try {
+      const body = await res.json();
+      if (typeof body?.detail === "string") detail = body.detail;
+    } catch {}
+    throw new Error(detail);
+  }
+}
+
 export async function deleteDocument(id: string): Promise<void> {
   const res = await fetch(`${API_URL}/api/documents/${id}`, { method: "DELETE" });
   if (!res.ok && res.status !== 204) throw new Error("no se pudo eliminar");
@@ -167,3 +236,32 @@ export const ESTADOS: Record<string, { label: string; cls: string }> = {
   ready: { label: "Listo", cls: "bg-emerald-100 text-emerald-700" },
   error: { label: "Error", cls: "bg-rose-100 text-rose-700" },
 };
+
+export const FORMATOS: Record<string, { label: string; cls: string }> = {
+  pdf: { label: "PDF", cls: "bg-rose-500/90 text-white" },
+  docx: { label: "DOCX", cls: "bg-blue-600/90 text-white" },
+  epub: { label: "EPUB", cls: "bg-emerald-600/90 text-white" },
+  html: { label: "HTML", cls: "bg-orange-500/90 text-white" },
+  txt: { label: "TXT", cls: "bg-slate-500/90 text-white" },
+  md: { label: "MD", cls: "bg-violet-500/90 text-white" },
+};
+
+export const ACCEPT_UPLOAD =
+  ".pdf,.txt,.text,.md,.docx,.html,.htm,.epub";
+
+export const PALETA = [
+  "#6366f1", "#0ea5e9", "#10b981", "#f59e0b",
+  "#ef4444", "#ec4899", "#8b5cf6", "#64748b",
+];
+
+export const ICONOS = [
+  "📁", "🏥", "🎓", "📄", "🔬", "⚖️", "💼", "🎧",
+  "🧪", "📊", "🌐", "⭐",
+];
+
+export function duracionLegible(seg: number): string {
+  if (!seg || seg <= 0) return "—";
+  const h = Math.floor(seg / 3600);
+  const m = Math.round((seg % 3600) / 60);
+  return h > 0 ? `${h} h ${m} min` : `${m} min`;
+}

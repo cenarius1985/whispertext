@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy import select
 
 from wispertext.config import get_settings
-from wispertext.models import Base, Voice
+from wispertext.models import Base, Category, Voice
 
 _engine = None
 _sessionmaker = None
@@ -52,10 +52,24 @@ async def init_db() -> None:
         await conn.execute(
             text("ALTER TABLE paragraphs ADD COLUMN IF NOT EXISTS texto_latex TEXT DEFAULT ''")
         )
+        # RF-MF-08: formato de origen del documento
+        await conn.execute(
+            text("ALTER TABLE documents ADD COLUMN IF NOT EXISTS formato VARCHAR(8) DEFAULT 'pdf'")
+        )
 
     # Seed de voces según configuración (idempotente)
     sm = get_sessionmaker()
     async with sm() as session:
+        # RF-CAT-06: categoría de sistema ⭐ Favoritos (idempotente)
+        fav = (
+            await session.execute(
+                select(Category).where(Category.es_sistema.is_(True))
+            )
+        ).scalar_one_or_none()
+        if fav is None:
+            session.add(
+                Category(nombre="Favoritos", color="#f59e0b", icono="⭐", es_sistema=True)
+            )
         existing = {
             v.clave: v
             for v in (await session.execute(select(Voice))).scalars().all()

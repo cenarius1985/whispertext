@@ -10,8 +10,9 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from wispertext.api.deps import get_arq, get_session, save_upload
+from wispertext.api.deps import get_arq, get_session, save_upload, FORMATO_POR_EXT
 from wispertext.api.schemas import (
+    CategoryRef,
     DocumentOut,
     DocumentUpdateIn,
     ExportIn,
@@ -23,6 +24,7 @@ from wispertext.api.schemas import (
 from wispertext.config import get_settings
 from wispertext.models import (
     AudioAsset,
+    Category,
     Document,
     Export,
     Job,
@@ -47,13 +49,19 @@ def media_url(ruta: str | None) -> str | None:
     return "/media/" + rel.as_posix()
 
 
-def doc_to_out(doc: Document, progreso_indice: int | None = None) -> DocumentOut:
+def doc_to_out(
+    doc: Document,
+    progreso_indice: int | None = None,
+    duracion_seg: float | None = None,
+) -> DocumentOut:
     out = DocumentOut.model_validate(doc)
     return out.model_copy(
         update={
             "voz_clave": doc.voz.clave if doc.voz else None,
             "portada_url": media_url(doc.portada_ruta),
             "progreso_indice": progreso_indice,
+            "duracion_total_seg": duracion_seg or 0.0,
+            "categorias": [CategoryRef.model_validate(c) for c in doc.categories],
         }
     )
 
@@ -67,6 +75,20 @@ async def _progress_map(session) -> dict[str, int]:
         )
     ).all()
     return {str(d): i for d, i in rows}
+
+
+async def _duracion_map(session) -> dict[str, float]:
+    """Suma de duración de audio por documento (párrafos activos)."""
+    rows = (
+        await session.execute(
+            select(Paragraph.document_id, func.sum(AudioAsset.duracion_seg))
+            .join(ParagraphAudio, ParagraphAudio.paragraph_id == Paragraph.id)
+            .join(AudioAsset, AudioAsset.id == ParagraphAudio.audio_id)
+            .where(Paragraph.activo.is_(True))
+            .group_by(Paragraph.document_id)
+        )
+    ).all()
+    return {str(d): float(s or 0) for d, s in rows}
 
 
 # --------------------------------------------------------------------------- #
@@ -114,6 +136,9 @@ async def create_document(
         estado="pending",
         archivo_original=ruta,
         archivo_hash=sha,
+        formato=FORMATO_POR_EXT.get(
+            Path(archivo.filename or "").suffix.lower(), "pdf"
+        ),
     )
     session.add(doc)
     await session.flush()
@@ -124,12 +149,14 @@ async def create_document(
     await session.commit()
 
     await arq.enqueue_job("run_ingest", str(job.id))
+    await session.refresh(doc)  # eager (selectin de categorías incluido)
     return doc_to_out(doc)
 
 
 @router.get("", response_model=list[DocumentOut])
 async def list_documents(
     q: str | None = Query(default=None),
+    categoria_id: str | None = Query(default=None),
     session: AsyncSession = Depends(get_session),
 ):
     stmt = (
@@ -137,8 +164,13 @@ async def list_documents(
         .options(selectinload(Document.voz))
         .order_by(Document.updated_at.desc())
     )
+    if categoria_id:
+        stmt = stmt.join(
+            Document.categories
+        ).where(Category.id == _uuid(categoria_id))
     docs = (await session.execute(stmt)).scalars().all()
     progress = await _progress_map(session)
+    duraciones = await _duracion_map(session)
     out = []
     for d in docs:
         if q:
@@ -158,7 +190,9 @@ async def list_documents(
                 ).scalar()
                 if not hit_texto:
                     continue
-        out.append(doc_to_out(d, progress.get(str(d.id))))
+        out.append(
+            doc_to_out(d, progress.get(str(d.id)), duraciones.get(str(d.id)))
+        )
     return out
 
 
@@ -174,7 +208,8 @@ async def get_document(doc_id: str, session: AsyncSession = Depends(get_session)
     if doc is None:
         raise HTTPException(404, "documento no existe")
     progress = await _progress_map(session)
-    return doc_to_out(doc, progress.get(str(doc.id)))
+    duraciones = await _duracion_map(session)
+    return doc_to_out(doc, progress.get(str(doc.id)), duraciones.get(str(doc.id)))
 
 
 @router.delete("/{doc_id}", status_code=204)
@@ -343,7 +378,7 @@ async def update_document(
     body: DocumentUpdateIn,
     session: AsyncSession = Depends(get_session),
 ):
-    """Edición manual del título (el extraído del PDF puede quedar corto)."""
+    """Edición de metadatos: título y/o categorías (reemplazo completo N:M)."""
     doc = (
         await session.execute(
             select(Document)
@@ -353,11 +388,30 @@ async def update_document(
     ).scalar_one_or_none()
     if doc is None:
         raise HTTPException(404, "documento no existe")
-    doc.titulo = body.titulo.strip()
+    if body.titulo is None and body.category_ids is None:
+        raise HTTPException(400, "nada que actualizar: indica titulo o category_ids")
+
+    if body.titulo is not None:
+        doc.titulo = body.titulo.strip()
+
+    if body.category_ids is not None:
+        cats: list[Category] = []
+        if body.category_ids:
+            rows = (
+                await session.execute(
+                    select(Category).where(Category.id.in_(body.category_ids))
+                )
+            ).scalars().all()
+            if len(rows) != len(set(body.category_ids)):
+                raise HTTPException(404, "alguna categoría no existe")
+            cats = sorted(rows, key=lambda c: c.nombre)
+        doc.categories = cats
+
     await session.commit()
     await session.refresh(doc)  # updated_at expira por onupdate (async-safe)
     progress = await _progress_map(session)
-    return doc_to_out(doc, progress.get(str(doc.id)))
+    duraciones = await _duracion_map(session)
+    return doc_to_out(doc, progress.get(str(doc.id)), duraciones.get(str(doc.id)))
 
 
 @router.patch("/{doc_id}/progress", status_code=204)

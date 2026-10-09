@@ -5,12 +5,14 @@ from datetime import datetime
 
 from sqlalchemy import (
     Boolean,
+    Column,
     DateTime,
     Float,
     ForeignKey,
     Index,
     Integer,
     String,
+    Table,
     Text,
     UniqueConstraint,
     Uuid,
@@ -26,6 +28,42 @@ class Base(DeclarativeBase):
 
 def _uuid() -> uuid.UUID:
     return uuid.uuid4()
+
+
+# Categorías N:M (RF-CAT-01): un documento puede estar en varias colecciones.
+document_categories = Table(
+    "document_categories",
+    Base.metadata,
+    Column(
+        "document_id",
+        Uuid,
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "category_id",
+        Uuid,
+        ForeignKey("categories.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
+
+# Alias legible: la unión N:M se usa como "DocumentCategory" en queries
+DocumentCategory = document_categories
+
+
+class Category(Base):
+    __tablename__ = "categories"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    nombre: Mapped[str] = mapped_column(String(64), unique=True)
+    color: Mapped[str] = mapped_column(String(16), default="#6366f1")
+    icono: Mapped[str] = mapped_column(String(8), default="📁")
+    # ⭐ Favoritos: viene sembrada, no editable ni borrable (RF-CAT-06)
+    es_sistema: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
 
 class Voice(Base):
@@ -59,6 +97,8 @@ class Document(Base):
     estado: Mapped[str] = mapped_column(String(16), default="pending")
     archivo_original: Mapped[str] = mapped_column(Text)
     archivo_hash: Mapped[str] = mapped_column(String(64))
+    # pdf | txt | md | docx | html | epub (RF-MF-08)
+    formato: Mapped[str] = mapped_column(String(8), default="pdf")
     version_actual: Mapped[int] = mapped_column(Integer, default=1)
     portada_ruta: Mapped[str | None] = mapped_column(Text, nullable=True)
     portada_tipo: Mapped[str] = mapped_column(String(12), default="ninguna")
@@ -72,6 +112,12 @@ class Document(Base):
     )
 
     voz = relationship("Voice")
+    categories = relationship(
+        "Category",
+        secondary=document_categories,
+        lazy="selectin",
+        order_by="Category.nombre",
+    )
     paragraphs = relationship(
         "Paragraph",
         back_populates="document",

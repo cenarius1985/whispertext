@@ -156,12 +156,33 @@ export default function ReaderView({ docId }: { docId: string }) {
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
       {/* Columna izquierda: texto con párrafos clicables */}
       <div className="min-h-[70vh]">
-        <div className="mb-4 flex items-baseline justify-between">
-          <h1 className="text-xl font-bold text-slate-900">{doc.titulo}</h1>
-          <Link href="/" className="text-sm text-slate-400 hover:text-brand-600">
-            ← Biblioteca
-          </Link>
-        </div>
+        {(() => {
+          const cat =
+            doc.categorias.find((c) => !c.es_sistema) ?? doc.categorias[0];
+          return (
+            <div className="mb-4 flex items-baseline justify-between gap-4">
+              <div className="min-w-0">
+                <p className="mb-1 truncate text-xs text-slate-400">
+                  <Link href="/" className="hover:text-brand-600">
+                    Biblioteca
+                  </Link>
+                  {cat && (
+                    <>
+                      {" › "}
+                      <Link
+                        href={`/?cat=${cat.id}`}
+                        className="hover:text-brand-600"
+                      >
+                        {cat.icono} {cat.nombre}
+                      </Link>
+                    </>
+                  )}
+                </p>
+                <h1 className="text-xl font-bold text-slate-900">{doc.titulo}</h1>
+              </div>
+            </div>
+          );
+        })()}
 
         <div className="space-y-1">
           {paragraphs.map((p) => {

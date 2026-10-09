@@ -24,7 +24,8 @@ from wispertext.worker import cleaning, editorial, speakable
 from wispertext.worker.bonsai import bonsai_formula, bonsai_is_editorial
 from wispertext.worker.diffing import align_versions
 from wispertext.worker.exporter import export_document_mp3
-from wispertext.worker.extraction import RawBlock, extract_pdf
+from wispertext.worker.extraction import RawBlock
+from wispertext.worker.extractors import extract_any
 from wispertext.worker.tts import TTSError, ensure_audio_for_paragraph
 
 log = logging.getLogger("wispertext.jobs")
@@ -116,6 +117,13 @@ def _build_paragraphs(
             texto_normalizado=norm,
             idioma=doc.idioma_lectura,
         )
+        if b.tipo == "codigo":
+            # md/html: bloques de código y tablas markdown — se muestran en el
+            # lector pero no se leen (RF-MF-04)
+            p.estado_audio = "skipped"
+            p.skip_reason = "codigo"
+            paragraphs.append(p)
+            continue
         if b.tipo == "figura":
             p.texto_hablado = speakable.prepare_speech(norm) if norm else ""
             p.hash_normalizado = (
@@ -244,9 +252,11 @@ async def run_ingest(ctx, job_id: str) -> None:
             doc.estado = "extracting"
             await session.commit()
 
-            ex = extract_pdf(doc.archivo_original)
+            ex = extract_any(doc.archivo_original)
             if ex.titulo_documento:
                 doc.titulo = ex.titulo_documento[:300]
+            if ex.autor and not doc.autor:
+                doc.autor = ex.autor
 
             # Portada fallback: página 1 del PDF (RF-07 / M-5)
             if doc.portada_tipo != "upload" and ex.cover_png:
@@ -297,7 +307,9 @@ async def run_replace(ctx, job_id: str) -> None:
 
             doc.estado = "extracting"
             await session.commit()
-            ex = extract_pdf(nueva_ruta)
+            ex = extract_any(nueva_ruta)
+            if ex.titulo_documento:
+                doc.titulo = ex.titulo_documento[:300]
 
             doc.estado = "cleaning"
             await session.commit()

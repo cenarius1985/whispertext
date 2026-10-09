@@ -52,6 +52,7 @@ class ExtractionResult:
     num_paginas: int = 0
     paginas_ocr: list[int] = field(default_factory=list)
     titulo_documento: str = ""
+    autor: str = ""  # docx/epub: metadatos del origen (PDF lo deja vacío)
     cover_png: bytes | None = None
 
 

@@ -7,10 +7,37 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 
+class CategoryRef(BaseModel):
+    id: UUID
+    nombre: str
+    color: str
+    icono: str
+    es_sistema: bool
+
+    model_config = {"from_attributes": True}
+
+
+class CategoryOut(CategoryRef):
+    total: int = 0
+
+
+class CategoryCreate(BaseModel):
+    nombre: str = Field(min_length=1, max_length=64)
+    color: str = Field(default="#6366f1", pattern=r"^#[0-9a-fA-F]{6}$")
+    icono: str = Field(default="📁", max_length=8)
+
+
+class CategoryUpdate(BaseModel):
+    nombre: str | None = Field(default=None, min_length=1, max_length=64)
+    color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
+    icono: str | None = Field(default=None, max_length=8)
+
+
 class DocumentOut(BaseModel):
     id: UUID
     titulo: str
     autor: str | None = None
+    formato: str = "pdf"
     idioma_origen: str
     idioma_lectura: str
     voz_clave: str | None = None
@@ -20,6 +47,8 @@ class DocumentOut(BaseModel):
     total_parrafos_activos: int
     portada_url: str | None = None
     progreso_indice: int | None = None
+    duracion_total_seg: float = 0.0
+    categorias: list[CategoryRef] = []
     error: str | None = None
     updated_at: datetime | None = None
 
@@ -46,7 +75,9 @@ class ProgressIn(BaseModel):
 
 
 class DocumentUpdateIn(BaseModel):
-    titulo: str = Field(min_length=1, max_length=300)
+    """Edición de metadatos: título y/o categorías (reemplazo completo N:M)."""
+    titulo: str | None = Field(default=None, min_length=1, max_length=300)
+    category_ids: list[UUID] | None = None
 
 
 class ReprocessIn(BaseModel):
