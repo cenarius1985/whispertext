@@ -5,11 +5,13 @@ Qué hace, en orden:
   1. Genera .env con claves dinámicas (password de Postgres aleatorio y
      puertos libres detectados: API desde 8000, frontend desde 3000).
   2. Descarga modelos (reanudables, se saltan si ya existen):
-       - Bonsai 8B (GGUF ~2 GB) para reconstruir ecuaciones con IA
-         (o usa el que ya esté en backend/bonsai/models/, p.ej. el 27B).
+       - Con GPU NVIDIA: Bonsai 2 27B PTQ1_0 (~5.7 GB), el packing más
+         rápido en GPUs Ada y el mayor que cabe en 8 GB de VRAM.
+       - Sin GPU: Bonsai 8B (GGUF ~2 GB) para CPU.
        - Whisper small de faster-whisper (~470 MB) para el módulo STT
          (experimental) en models/whisper/.
-  3. Levanta el stack completo con docker compose (build incluido).
+  3. Levanta el stack completo con docker compose (build incluido); con GPU
+     añade el perfil "bonsai" (llama-server CUDA + modelo en VRAM).
   4. Espera la salud de la API y abre la biblioteca en el navegador.
 
 Uso:
@@ -37,11 +39,33 @@ if hasattr(sys.stdout, "reconfigure"):
 
 RAIZ = Path(__file__).resolve().parent
 
-BONSAI_GGUF_URL = (
+# Rama gpu: Bonsai 2 27B PTQ1_0 (~5.7 GB) — el packing más rápido en GPUs Ada
+# (RTX 30/40) y el más grande que cabe entero en 8 GB de VRAM (-ngl 99).
+BONSAI_GGUF_URL_GPU = (
+    "https://huggingface.co/prism-ml/Ternary-Bonsai-2-27B-gguf/"
+    "resolve/main/Ternary-Bonsai-2-27B-PTQ1_0.gguf"
+)
+BONSAI_GGUF_NAME_GPU = "Ternary-Bonsai-2-27B-PTQ1_0.gguf"
+
+# Sin GPU: Bonsai gen-1 8B (GGUF ~2 GB) para CPU.
+BONSAI_GGUF_URL_CPU = (
     "https://huggingface.co/prism-ml/Ternary-Bonsai-8B-gguf/"
     "resolve/main/Ternary-Bonsai-8B-PQ2_0.gguf"
 )
-BONSAI_GGUF_NAME = "Ternary-Bonsai-8B-PQ2_0.gguf"
+BONSAI_GGUF_NAME_CPU = "Ternary-Bonsai-8B-PQ2_0.gguf"
+
+
+def tiene_gpu() -> bool:
+    """True si hay una GPU NVIDIA usable (nvidia-smi en PATH y reporta alguna)."""
+    if shutil.which("nvidia-smi") is None:
+        return False
+    try:
+        r = subprocess.run(
+            ["nvidia-smi", "-L"], capture_output=True, text=True, timeout=15,
+        )
+        return r.returncode == 0 and "GPU" in (r.stdout or "")
+    except Exception:  # noqa: BLE001
+        return False
 
 WHISPER_BASE = "https://huggingface.co/Systran/faster-whisper-small/resolve/main/"
 WHISPER_FILES = ["config.json", "tokenizer.json", "model.bin"]
@@ -60,12 +84,27 @@ def puerto_libre(desde: int) -> int:
     return desde
 
 
-def generar_env(ruta: Path, regenerar: bool) -> None:
+def generar_env(ruta: Path, regenerar: bool, gpu: bool) -> None:
     if ruta.exists() and not regenerar:
         print(f"    .env ya existe ({ruta}); se conserva (usa --regenerar para cambiarlo)")
         return
     api = puerto_libre(8000)
     web = puerto_libre(3000)
+    if gpu:
+        bonsai = (
+            "# Bonsai auto-hospedado CON GPU (perfil bonsai del compose):\n"
+            "# Bonsai 2 27B PTQ1_0 (~5.7 GB) 100% en VRAM. Si la VRAM no alcanza\n"
+            "# (p. ej. otros apps usando la GPU), baja BONSAI_NGL (ej. 60).\n"
+            "BONSAI_BASE_URL=http://bonsai:8080/v1\n"
+            "BONSAI_MODEL=ternary-bonsai-2-27b\n"
+            "BONSAI_NGL=99\n"
+            "# BONSAI_THINKING=1  # descomenta para razonamiento (más lento)\n"
+        )
+    else:
+        bonsai = (
+            "BONSAI_BASE_URL=http://host.docker.internal:4687/v1\n"
+            "BONSAI_MODEL=ternary-bonsai-8b\n"
+        )
     contenido = f"""# Generado por coordinador.py — edita a gusto
 POSTGRES_USER=whispertext
 POSTGRES_PASSWORD={secrets.token_urlsafe(18)}
@@ -75,9 +114,7 @@ API_PORT={api}
 FRONTEND_PORT={web}
 NEXT_PUBLIC_API_URL=http://localhost:{api}
 
-BONSAI_BASE_URL=http://host.docker.internal:4687/v1
-BONSAI_MODEL=ternary-bonsai-8b
-BONSAI_ENABLED=true
+{bonsai}BONSAI_ENABLED=true
 
 PIPER_VOICE_DEFAULT=es_AR-daniela-high
 PIPER_VOICES_EXTRA=en_US-lessac-high,en_US-ryan-high
@@ -92,7 +129,8 @@ NORMALIZER_VERSION=v7
 CORS_ORIGINS=http://localhost:{web},http://127.0.0.1:{web}
 """
     ruta.write_text(contenido, encoding="utf-8")
-    print(f"    .env generado: API en :{api}, web en :{web}, password aleatoria")
+    extra = ", Bonsai en GPU (perfil bonsai)" if gpu else ""
+    print(f"    .env generado: API en :{api}, web en :{web}, password aleatoria{extra}")
 
 
 def descargar(url: str, destino: Path) -> None:
@@ -103,26 +141,43 @@ def descargar(url: str, destino: Path) -> None:
     tmp = destino.with_suffix(destino.suffix + ".part")
     print(f"    descargando {destino.name} desde {url.split('/')[2]} …")
     try:
-        with urllib.request.urlopen(url, timeout=60) as r, open(tmp, "wb") as fh:
-            total = int(r.headers.get("Content-Length") or 0)
-            leido = 0
-            while True:
-                chunk = r.read(1 << 20)
-                if not chunk:
-                    break
-                fh.write(chunk)
-                leido += len(chunk)
-                if total:
-                    pct = 100 * leido // total
-                    print(f"\r    {pct:3d}%  {leido // 1048576}/{total // 1048576} MB", end="")
-        print()
+        for intento in range(6):  # reanuda cortes de red (el tamaño final se valida)
+            offset = tmp.stat().st_size if tmp.exists() else 0
+            headers = {"Range": f"bytes={offset}-"} if offset else {}
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=60) as r, open(tmp, "ab" if offset else "wb") as fh:
+                rango = r.headers.get("Content-Range", "")
+                total = int(r.headers.get("Content-Length") or 0)
+                if rango and "/" in rango:
+                    total = int(rango.rsplit("/", 1)[1])
+                elif offset and r.status == 200:  # el server ignoró el Range: empezar de cero
+                    fh.seek(0)
+                    offset, total = 0, total or 0
+                leido = offset
+                while True:
+                    chunk = r.read(1 << 20)
+                    if not chunk:
+                        break
+                    fh.write(chunk)
+                    leido += len(chunk)
+                    if total:
+                        pct = 100 * leido // total
+                        print(f"\r    {pct:3d}%  {leido // 1048576}/{total // 1048576} MB", end="")
+            print()
+            if not total or leido >= total:
+                break
+            print(f"    corte a {leido // 1048576}/{total // 1048576} MB; reanudando ({intento + 1}/6)…")
+        else:
+            raise RuntimeError(f"descarga incompleta tras 6 intentos ({destino.name})")
+        if total and leido < total:
+            raise RuntimeError(f"descarga incompleta: {leido} de {total} bytes ({destino.name})")
         tmp.rename(destino)
     except Exception as exc:  # noqa: BLE001
-        tmp.unlink(missing_ok=True)
+        # el .part NO se borra: permite reanudar en la próxima ejecución
         raise RuntimeError(f"descarga falló ({destino.name}): {exc}") from exc
 
 
-def preparar_bonsai() -> None:
+def preparar_bonsai(gpu: bool) -> None:
     paso("Bonsai (LLM para ecuaciones; opcional y fail-soft)")
     dir_modelos = RAIZ / "backend" / "bonsai" / "models"
     dir_modelos.mkdir(parents=True, exist_ok=True)
@@ -132,9 +187,16 @@ def preparar_bonsai() -> None:
             print(f"    encontrado: {gguf.name} ({gguf.stat().st_size // 1048576} MB)")
         print("    (el servicio 'bonsai' del compose usará este modelo por volumen)")
         return
+    if gpu:
+        url, nombre = BONSAI_GGUF_URL_GPU, BONSAI_GGUF_NAME_GPU
+    else:
+        url, nombre = BONSAI_GGUF_URL_CPU, BONSAI_GGUF_NAME_CPU
     try:
-        descargar(BONSAI_GGUF_URL, dir_modelos / BONSAI_GGUF_NAME)
-        print("    Bonsai 8B listo (activar con: docker compose --profile bonsai up -d bonsai)")
+        descargar(url, dir_modelos / nombre)
+        if gpu:
+            print("    Bonsai 2 27B PTQ1_0 listo (servirá en la GPU con el perfil bonsai)")
+        else:
+            print("    Bonsai 8B listo (activar con: docker compose --profile bonsai up -d bonsai)")
     except RuntimeError as exc:
         print(f"    AVISO: {exc}")
         print("    WISPERTEXT funciona igual sin Bonsai (modo determinista);")
@@ -151,13 +213,17 @@ def preparar_whisper() -> None:
         print(f"    AVISO: {exc} — el módulo STT es experimental y opcional.")
 
 
-def levantar() -> tuple[str, str]:
-    paso("Levantando el stack (docker compose up -d --build)")
+def levantar(gpu: bool) -> tuple[str, str]:
+    perfil = " (con perfil bonsai en GPU)" if gpu else ""
+    paso(f"Levantando el stack{perfil} (docker compose up -d --build)")
     if shutil.which("docker") is None:
         sys.exit("ERROR: docker no está en PATH. Instala Docker Desktop primero.")
+    cmd = ["docker", "compose"]
+    if gpu:
+        cmd += ["--profile", "bonsai"]
+    cmd += ["up", "-d", "--build"]
     r = subprocess.run(
-        ["docker", "compose", "up", "-d", "--build"],
-        cwd=RAIZ, capture_output=True, text=True, encoding="utf-8", errors="replace",
+        cmd, cwd=RAIZ, capture_output=True, text=True, encoding="utf-8", errors="replace",
     )
     if r.returncode != 0:
         print(r.stdout[-2000:])
@@ -201,15 +267,17 @@ def main() -> int:
     args = ap.parse_args()
 
     print("WISPERTEXT — coordinador de instalación")
+    gpu = tiene_gpu()
+    print(f"GPU NVIDIA detectada: {'sí' if gpu else 'no'}")
     paso("Generando .env")
-    generar_env(RAIZ / ".env", args.regenerar)
+    generar_env(RAIZ / ".env", args.regenerar, gpu)
 
     if not args.sin_bonsai:
-        preparar_bonsai()
+        preparar_bonsai(gpu)
     if not args.sin_whisper:
         preparar_whisper()
 
-    levantar()
+    levantar(gpu)
     env = (RAIZ / ".env").read_text(encoding="utf-8")
     api_port = 8000
     web_port = 3000

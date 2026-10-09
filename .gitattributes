@@ -1,0 +1,2 @@
+# Scripts sh siempre con LF (evita el fallo exec en contenedores Linux)
+*.sh text eol=lf

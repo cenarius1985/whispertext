@@ -69,10 +69,19 @@ docker compose logs -f worker
 | Perfil | CPU | RAM libre | Disco | Notas |
 |---|---|---|---|---|
 | **Mínimo** | 4 núcleos x64 | **4 GB** | 6 GB | Stack + voz *Daniela*; sin Bonsai (las ecuaciones se muestran como imagen) |
-| **Recomendado** | 6+ núcleos | **8 GB** | 10 GB | + Bonsai 8B (ecuaciones con LaTeX y lectura) + Whisper |
-| **Camarote** | 8+ núcleos | **16 GB** | 20 GB | + Bonsai 27B (perfil `bonsai`, ~7 GB solo para el modelo) |
+| **Recomendado** | 6+ núcleos | **8 GB** | 10 GB | + Bonsai 8B en CPU (ecuaciones con LaTeX y lectura) + Whisper |
+| **GPU** 🚀 | 4+ núcleos | **8 GB** | 14 GB | Rama `gpu`: **Bonsai 2 27B PTQ1_0 100 % en VRAM** (8 GB bastan) + Whisper |
 
-Todo corre en **CPU** (sin GPU). Sintetizar es más lento que tiempo real en equipos justos: por eso existe la escucha temprana y el cache por hash — solo se sintetiza una vez.
+### 🚀 Rama `gpu` (NVIDIA con 8 GB+ de VRAM)
+
+La rama `gpu` sirve el **Bonsai 2 27B** (generación 2, 98.2 % de la inteligencia FP16) enteramente en la GPU con el binario CUDA del fork PrismML:
+
+- **PTQ1_0 (~5.7 GB)**: el packing más rápido en tarjetas Ada (RTX 30/40) y el mayor que cabe en 8 GB de VRAM con `-ngl 99`.
+- El `coordinador.py` detecta la GPU (`nvidia-smi`), descarga el 27B y levanta el stack con el perfil `bonsai` automáticamente.
+- Requiere Docker con runtime NVIDIA (Docker Desktop en Windows ya lo incluye).
+- ¿VRAM justa por otros programas? Baja `BONSAI_NGL` en el `.env` (p. ej. `60`) para dejar parte de las capas en CPU.
+
+Sin GPU, todo corre en CPU como se describe abajo: sintetizar es más lento que tiempo real en equipos justos; por eso existen la escucha temprana y el cache por hash — solo se sintetiza una vez.
 
 ## 🧱 Tecnologías
 
