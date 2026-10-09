@@ -77,7 +77,25 @@ export default function AjustesPage() {
 
 /* ── Modelo LLM en caliente ──────────────────────────────────────────────── */
 
+// Presets de endpoints OpenAI-compatible (patrón del selector de proveedores
+// de DIIA, adaptado a la filosofía local de WISPER-TEXT: sin cuentas ni
+// claves, solo endpoints conocidos + uno libre).
+const PROVEEDORES_LLM: { id: string; label: string; url: string }[] = [
+  { id: "bonsai-stack", label: "🧠 Bonsai — este stack (GPU/CPU)", url: "http://bonsai:8080/v1" },
+  { id: "bonsai-externo", label: "🧠 Bonsai externo — :4687", url: "http://host.docker.internal:4687/v1" },
+  { id: "ollama", label: "🦙 Ollama local — :11434", url: "http://host.docker.internal:11434/v1" },
+  { id: "lmstudio", label: "🖥️ LM Studio — :1234", url: "http://host.docker.internal:1234/v1" },
+  { id: "vllm", label: "⚡ vLLM — :8000", url: "http://host.docker.internal:8000/v1" },
+  { id: "custom", label: "✏️ Personalizado…", url: "" },
+];
+
+function proveedorDeUrl(url: string): string {
+  const hit = PROVEEDORES_LLM.find((p) => p.url && p.url === url);
+  return hit ? hit.id : "custom";
+}
+
 function LLMSection() {
+  const [prov, setProv] = useState("custom");
   const [baseUrl, setBaseUrl] = useState("");
   const [model, setModel] = useState("");
   const [enabled, setEnabled] = useState(true);
@@ -93,6 +111,7 @@ function LLMSection() {
     try {
       const cfg = await fetchLLMConfig();
       setBaseUrl(cfg.base_url);
+      setProv(proveedorDeUrl(cfg.base_url));
       setModel(cfg.model);
       setEnabled(cfg.enabled);
       setSource(cfg.source);
@@ -152,6 +171,28 @@ function LLMSection() {
     }
   };
 
+  const elegirProveedor = async (id: string) => {
+    setProv(id);
+    setErr(null);
+    setMsg(null);
+    setModelos([]);
+    const preset = PROVEEDORES_LLM.find((p) => p.id === id);
+    if (!preset?.url) return; // Personalizado: se escribe la URL a mano
+    setBaseUrl(preset.url);
+    setBusy("catalogo");
+    try {
+      // Aplica el endpoint de una vez (en caliente) y trae su catálogo.
+      await saveLLMConfig({ base_url: preset.url });
+      setSource("archivo");
+      setMsg(`Proveedor cambiado a ${preset.label} — ya activo para api y worker.`);
+      setModelos(await fetchLLMModels(preset.url));
+    } catch (e) {
+      setErr(`Guardado OK pero el catálogo no respondió: ${(e as Error).message}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const restablecer = async () => {
     setBusy("reset");
     setErr(null);
@@ -159,6 +200,7 @@ function LLMSection() {
     try {
       const cfg = await resetLLMConfig();
       setBaseUrl(cfg.base_url);
+      setProv(proveedorDeUrl(cfg.base_url));
       setModel(cfg.model);
       setEnabled(cfg.enabled);
       setSource(cfg.source);
@@ -195,10 +237,29 @@ function LLMSection() {
 
       <div className="mt-4 space-y-3">
         <label className="block">
-          <span className="text-xs font-medium text-slate-500">URL del servidor</span>
+          <span className="text-xs font-medium text-slate-500">Proveedor</span>
+          <select
+            value={prov}
+            onChange={(e) => elegirProveedor(e.target.value)}
+            disabled={busy !== null}
+            className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+          >
+            {PROVEEDORES_LLM.map((p) => (
+              <option key={p.id} value={p.id}>{p.label}</option>
+            ))}
+          </select>
+        </label>
+
+        <label className="block">
+          <span className="text-xs font-medium text-slate-500">
+            URL del servidor {prov === "custom" ? "" : "(editable — pasa a Personalizado)"}
+          </span>
           <input
             value={baseUrl}
-            onChange={(e) => setBaseUrl(e.target.value)}
+            onChange={(e) => {
+              setBaseUrl(e.target.value);
+              setProv(proveedorDeUrl(e.target.value.trim()));
+            }}
             spellCheck={false}
             placeholder="http://bonsai:8080/v1"
             className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 font-mono text-xs outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"

@@ -2,10 +2,21 @@
 
 > Copia adaptada para el repositorio público.
 
-- [Arquitectura general — WISPER-TEXT](01-arquitectura.md)
-- [Decisiones técnicas (ADR) — WISPER-TEXT](02-decisiones-tecnicas-adr.md)
-- [Uso local sin autenticación — WISPER-TEXT](03-seguridad-uso-local.md)
-- [Modelo de datos — WISPER-TEXT](04-modelo-de-datos.md)
+## Producto
+
 - [PRD — Plataforma WISPER-TEXT (biblioteca audible de documentos)](05-prd.md)
-- [Entorno Docker — WISPER-TEXT](06-entorno-docker.md)
+- [PRD — Actualización v2: multi-formato, categorías y nueva biblioteca visual](08-prd-v2-multiformato-categorias.md) ✅ implementado
+
+## Técnica
+
+- [Arquitectura general](01-arquitectura.md)
+- [Decisiones técnicas (ADR)](02-decisiones-tecnicas-adr.md)
+- [Modelo de datos](04-modelo-de-datos.md) — incluye categorías N:M y formatos (v2)
+- [Entorno Docker](06-entorno-docker.md)
+- [Uso local sin autenticación (seguridad)](03-seguridad-uso-local.md)
+
+## Guías
+
+- [GPU NVIDIA — Bonsai 2 27B 100 % en VRAM (rama `gpu`)](09-gpu-bonsai.md)
+- [LLM configurable en caliente (Ajustes)](10-llm-configurable.md)
 - [Runbook — Primer arranque y provisión de voces (red con HuggingFace bloqueada)](07-runbook-primer-arranque.md)

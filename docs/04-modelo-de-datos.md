@@ -166,6 +166,32 @@ erDiagram
 - Limpieza opcional (P2): audios huérfanos sin ninguna asociación (job
   `gc-audio` mensual).
 
+### 5. Categorías y formatos (v2, 2026-10-09)
+
+```sql
+-- Colecciones N:M: un documento puede estar en varias.
+CREATE TABLE categories (
+    id UUID PRIMARY KEY,
+    nombre VARCHAR(64) UNIQUE NOT NULL,
+    color VARCHAR(16) DEFAULT '#6366f1',
+    icono VARCHAR(8) DEFAULT '📁',
+    es_sistema BOOLEAN DEFAULT FALSE,   -- ⭐ Favoritos (sembrada, no editable)
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE TABLE document_categories (
+    document_id UUID REFERENCES documents(id) ON DELETE CASCADE,
+    category_id UUID REFERENCES categories(id) ON DELETE CASCADE,
+    PRIMARY KEY (document_id, category_id)
+);
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS formato VARCHAR(8) DEFAULT 'pdf';
+-- pdf | txt | md | docx | html | epub
+```
+
+Reglas: borrar una categoría solo desetiqueta (los documentos quedan);
+`es_sistema` no es editable ni borrable por API; el reemplazo de la lista de
+categorías de un documento es completo vía `PATCH /api/documents/{id}
+{category_ids}`; las tablas las crea `create_all` en el arranque.
+
 ## Ejemplos
 
 Diff de reemplazo (v1→v2) en SQL conceptual:
