@@ -33,8 +33,11 @@ services:
       REDIS_URL: redis://redis:6379/0
       MEDIA_DIR: /data/media
       MODELS_DIR: /data/models
-      BONSAI_BASE_URL: ${BONSAI_BASE_URL:-http://bonsai:8080/v1}
-      BONSAI_MODEL: ${BONSAI_MODEL:-ternary-bonsai-2-27b}
+      # main = CPU-first: Bonsai externo por defecto (fail-soft si no existe).
+      # Con GPU NVIDIA, el coordinador detecta y escribe BONSAI_BASE_URL=http://bonsai:8080/v1
+      # (ver rama `gpu`, afinada para RTX 4060 8 GB).
+      BONSAI_BASE_URL: ${BONSAI_BASE_URL:-http://host.docker.internal:4687/v1}
+      BONSAI_MODEL: ${BONSAI_MODEL:-ternary-bonsai-8b}
       BONSAI_ENABLED: ${BONSAI_ENABLED:-true}
       PIPER_VOICE_DEFAULT: ${PIPER_VOICE_DEFAULT:-es_AR-daniela-high}
       PIPER_VOICES_EXTRA: ${PIPER_VOICES_EXTRA:-en_US-lessac-high,en_US-ryan-high}

@@ -52,6 +52,8 @@ Eso es todo. El **coordinador**:
 3. Levanta todo el stack (`docker compose up -d --build`), espera la salud de la API y **abre la biblioteca en tu navegador**.
 
 > Requisitos: **Docker** (Desktop o Engine con compose) y **Python 3.9+**. La primera vez tarda (builds + voces Piper ~300 MB). ¿Red con HuggingFace bloqueada? Mira `docs/07-runbook-primer-arranque.md`.
+>
+> 🚀 **¿PC con GPU NVIDIA (p. ej. RTX 4060)?** El coordinador la detecta y sirve el Bonsai 27B en VRAM automáticamente; también existe la rama [`gpu`](https://github.com/cenarius1985/whispertext/tree/gpu) afinada para RTX 4060 — detalles en [GPU NVIDIA](#-gpu-nvidia-auto-detectada--rama-gpu-para-rtx-4060).
 
 <details>
 <summary><b>🧰 Sin coordinador (a mano)</b></summary>
@@ -70,16 +72,17 @@ docker compose logs -f worker
 |---|---|---|---|---|
 | **Mínimo** | 4 núcleos x64 | **4 GB** | 6 GB | Stack + voz *Daniela*; sin Bonsai (las ecuaciones se muestran como imagen) |
 | **Recomendado** | 6+ núcleos | **8 GB** | 10 GB | + Bonsai 8B en CPU (ecuaciones con LaTeX y lectura) + Whisper |
-| **GPU** 🚀 | 4+ núcleos | **8 GB** | 14 GB | Rama `gpu`: **Bonsai 2 27B PTQ1_0 100 % en VRAM** (8 GB bastan) + Whisper |
+| **GPU** 🚀 | 4+ núcleos | **8 GB** | 14 GB | **Bonsai 2 27B PTQ1_0 100 % en VRAM** (8 GB bastan) — ver [rama `gpu`](#-gpu-nvidia-auto-detectada), afinada para **RTX 4060** |
 
-### 🚀 Rama `gpu` (NVIDIA con 8 GB+ de VRAM)
+### 🚀 GPU NVIDIA (auto-detectada · rama `gpu` para RTX 4060)
 
-La rama `gpu` sirve el **Bonsai 2 27B** (generación 2, 98.2 % de la inteligencia FP16) enteramente en la GPU con el binario CUDA del fork PrismML:
+¿Tu PC tiene GPU NVIDIA? **El coordinador la detecta solo** (`nvidia-smi`) y en ese caso descarga el **Bonsai 2 27B PTQ1_0** (generación 2, 98.2 % de la inteligencia FP16) y lo sirve **100 % en VRAM** con el binario CUDA del fork PrismML — nada que configurar:
 
-- **PTQ1_0 (~5.7 GB)**: el packing más rápido en tarjetas Ada (RTX 30/40) y el mayor que cabe en 8 GB de VRAM con `-ngl 99`.
-- El `coordinador.py` detecta la GPU (`nvidia-smi`), descarga el 27B y levanta el stack con el perfil `bonsai` automáticamente.
+- **PTQ1_0 (~5.7 GB)**: el packing más rápido en tarjetas Ada (RTX 30/40) y el mayor que cabe en 8 GB de VRAM con `-ngl 99`. Medido en una **RTX 4060**: ~30 tok/s.
 - Requiere Docker con runtime NVIDIA (Docker Desktop en Windows ya lo incluye).
 - ¿VRAM justa por otros programas? Baja `BONSAI_NGL` en el `.env` (p. ej. `60`) para dejar parte de las capas en CPU.
+
+Además existe la **rama [`gpu`](https://github.com/cenarius1985/whispertext/tree/gpu)** del repo — **afinada y verificada específicamente para una RTX 4060 de 8 GB** — donde los defaults ya vienen en modo GPU (Bonsai auto-hospedado activado sin depender de la detección). `main` es **CPU-first**: mismos binarios, pero por defecto apunta a un Bonsai externo en CPU y solo activa el perfil GPU cuando la detecta.
 
 Sin GPU, todo corre en CPU como se describe abajo: sintetizar es más lento que tiempo real en equipos justos; por eso existen la escucha temprana y el cache por hash — solo se sintetiza una vez.
 
