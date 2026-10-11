@@ -10,7 +10,9 @@ RUN npm run build
 
 FROM node:20-alpine AS runner
 WORKDIR /app
-ENV NODE_ENV=production PORT=3000
+# Docker define HOSTNAME=<id de contenedor> y el server.js standalone de Next lo
+# usa como host de escucha → getaddrinfo EAI_AGAIN. Hay que fijarlo explícito.
+ENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 EXPOSE 3000
