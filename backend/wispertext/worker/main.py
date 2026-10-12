@@ -93,5 +93,8 @@ class WorkerSettings:
     on_shutdown = shutdown
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
     max_jobs = 1          # Piper/OCR son CPU-bound: secuencial por diseño
-    job_timeout = 14_400  # 4 h para OCR largos
+    job_timeout = 43_200  # 12 h: la síntesis completa de una tesis (~1600
+                          # párrafos) supera las 4 h; arq cancela con
+                          # CancelledError, que escapa al `except Exception`
+                          # de run_ingest y deja el documento huérfano
     keep_result = 3_600

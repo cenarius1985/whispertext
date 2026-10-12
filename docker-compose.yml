@@ -78,7 +78,9 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "2"
+          # 6 de 16 cores: Piper (onnxruntime) escala con los cores disponibles;
+          # con 2 la síntesis de una tesis completa (~1600 párrafos) tarda ~10 h
+          cpus: "6"
           memory: 2g
     restart: unless-stopped
 

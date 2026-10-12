@@ -1,5 +1,6 @@
 """Orquestación de jobs: ingest / replace (diff) / reprocess / export / on-demand."""
 
+import asyncio
 import logging
 import uuid
 from pathlib import Path
@@ -79,6 +80,14 @@ async def _fail(session, job: Job, doc: Document | None, exc: Exception) -> None
         doc.error = error
     await session.commit()
     await _job_event(job)
+
+
+async def _fail_cancelled(session, job: Job, doc: Document | None) -> None:
+    """arq cancela jobs al agotar job_timeout con CancelledError, que escapa
+    de `except Exception` (BaseException): sin esto el documento queda
+    huérfano en su estado intermedio hasta el próximo arranque del worker."""
+    await _fail(session, job, doc, RuntimeError("cancelado: job_timeout de arq agotado"))
+    raise asyncio.CancelledError
 
 
 MAX_BONSAI_CALLS = 12  # tope por versión: Bonsai caído no frena la ingesta
@@ -302,6 +311,8 @@ async def run_ingest(ctx, job_id: str) -> None:
             await _patch_job(session, job, estado="done")
         except Exception as exc:  # noqa: BLE001
             await _fail(session, job, doc, exc)
+        except asyncio.CancelledError:
+            await _fail_cancelled(session, job, doc)
 
 
 async def run_replace(ctx, job_id: str) -> None:
@@ -422,6 +433,8 @@ async def run_replace(ctx, job_id: str) -> None:
             await _patch_job(session, job, estado="done")
         except Exception as exc:  # noqa: BLE001
             await _fail(session, job, doc, exc)
+        except asyncio.CancelledError:
+            await _fail_cancelled(session, job, doc)
 
 
 async def run_reprocess(ctx, job_id: str) -> None:
@@ -486,6 +499,8 @@ async def run_reprocess(ctx, job_id: str) -> None:
             await _patch_job(session, job, estado="done")
         except Exception as exc:  # noqa: BLE001
             await _fail(session, job, doc, exc)
+        except asyncio.CancelledError:
+            await _fail_cancelled(session, job, doc)
 
 
 async def run_export(ctx, job_id: str) -> None:
@@ -535,6 +550,10 @@ async def run_export(ctx, job_id: str) -> None:
             if export:
                 export.estado = "error"
             await _fail(session, job, doc, exc)
+        except asyncio.CancelledError:
+            if export:
+                export.estado = "error"
+            await _fail_cancelled(session, job, doc)
 
 
 async def synthesize_paragraph_task(ctx, paragraph_id: str) -> None:
