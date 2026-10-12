@@ -34,6 +34,11 @@ _LIGATURES = {
 # Caracteres de control excepto tab/salto de línea; incluye soft hyphen y zero-width
 _CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\u200b\u2060]")
 
+# Bytes que asyncpg/Postgres rechazan o que son basura de extracción: capas
+# internas rotas de PDFs dejan \x00/\x01 sueltos en bloques de texto. Se
+# conservan \t \n \r (útiles en texto crudo).
+_DB_UNSAFE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+
 # Guion + (o soft hyphen) de fin de línea; grupos: (head)(sep)(tail)
 _HYPHEN_EOL = re.compile(r"(\w+)([\u00ad-])\s*\n\s*(\w+)")
 
@@ -118,6 +123,16 @@ def fix_math_subsup(text: str) -> str:
     text = _MATH_SUBSUP_NL.sub(r"\1\3\2", text)
     text = _MATH_SUBSUP_SP.sub(r"\1\3\2", text)
     return text
+
+
+def strip_control_chars(text: str) -> str:
+    """Sanea texto crudo antes de persistirlo.
+
+    asyncpg rechaza el byte NUL al insertar y el resto de controles C0/DEL
+    no aporta: un PDF con bloques '\\x00' reventaba el INSERT de párrafos
+    y dejaba el documento 'limpiando' para siempre (2026-10-11).
+    """
+    return _DB_UNSAFE.sub("", text)
 
 
 def normalize_for_tts(text: str) -> str:

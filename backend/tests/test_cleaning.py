@@ -8,7 +8,18 @@ from wispertext.worker.cleaning import (
     looks_like_junk,
     normalize_for_tts,
     paragraph_hash,
+    strip_control_chars,
 )
+
+
+def test_strip_control_chars():
+    # bug 2026-10-11: bloques '\x00'/'\x01' de un PDF reventaban el INSERT
+    # en asyncpg ("invalid byte sequence for encoding UTF8: 0x00")
+    assert strip_control_chars("\x00") == ""
+    assert strip_control_chars("\x01\x02") == ""
+    assert strip_control_chars("a\x00b\x0cc\x7f") == "abc"
+    # tab/saltos se conservan en el texto crudo
+    assert strip_control_chars("línea\ncon\ttab\ry fin") == "línea\ncon\ttab\ry fin"
 
 
 def test_acento_despues_de_vocal():

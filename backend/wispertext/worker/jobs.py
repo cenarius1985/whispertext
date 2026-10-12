@@ -59,11 +59,24 @@ async def _patch_job(session, job: Job, **fields) -> None:
 
 async def _fail(session, job: Job, doc: Document | None, exc: Exception) -> None:
     log.exception("job %s falló", job.id)
+    error = f"{type(exc).__name__}: {exc}"[:2000]
+    try:
+        # El fallo original deja la sesión en PendingRollbackError y las
+        # instancias expiradas: rollback + refresh ANTES de escribir el error
+        # (si no, el registro del fallo también explota y el documento queda
+        # para siempre en su estado intermedio — bug 2026-10-11).
+        await session.rollback()
+        await session.refresh(job)
+        if doc is not None:
+            await session.refresh(doc)
+    except Exception:  # noqa: BLE001
+        log.exception("no se pudo registrar el fallo del job %s en la BD", job.id)
+        return
     job.estado = "error"
-    job.error = f"{type(exc).__name__}: {exc}"[:2000]
+    job.error = error
     if doc is not None:
         doc.estado = "error"
-        doc.error = job.error
+        doc.error = error
     await session.commit()
     await _job_event(job)
 
@@ -113,7 +126,7 @@ def _build_paragraphs(
             indice=idx,
             pagina=b.pagina,
             tipo=b.tipo,
-            texto_original=(b.texto or "")[:20000],
+            texto_original=cleaning.strip_control_chars(b.texto or "")[:20000],
             texto_normalizado=norm,
             idioma=doc.idioma_lectura,
         )
@@ -254,9 +267,9 @@ async def run_ingest(ctx, job_id: str) -> None:
 
             ex = extract_any(doc.archivo_original)
             if ex.titulo_documento:
-                doc.titulo = ex.titulo_documento[:300]
+                doc.titulo = cleaning.strip_control_chars(ex.titulo_documento)[:300]
             if ex.autor and not doc.autor:
-                doc.autor = ex.autor
+                doc.autor = cleaning.strip_control_chars(ex.autor)
 
             # Portada fallback: página 1 del PDF (RF-07 / M-5)
             if doc.portada_tipo != "upload" and ex.cover_png:
@@ -309,7 +322,7 @@ async def run_replace(ctx, job_id: str) -> None:
             await session.commit()
             ex = extract_any(nueva_ruta)
             if ex.titulo_documento:
-                doc.titulo = ex.titulo_documento[:300]
+                doc.titulo = cleaning.strip_control_chars(ex.titulo_documento)[:300]
 
             doc.estado = "cleaning"
             await session.commit()
