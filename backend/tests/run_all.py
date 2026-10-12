@@ -13,6 +13,7 @@ MODULOS = [
     "tests.test_editorial",
     "tests.test_jobs",
     "tests.test_speakable",
+    "tests.test_watchdog",
     "tests.test_extractors",
     "tests.test_llm_runtime",
 ]

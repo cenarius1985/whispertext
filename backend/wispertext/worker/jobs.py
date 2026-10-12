@@ -84,9 +84,12 @@ async def _fail(session, job: Job, doc: Document | None, exc: Exception) -> None
 
 async def _fail_cancelled(session, job: Job, doc: Document | None) -> None:
     """arq cancela jobs al agotar job_timeout con CancelledError, que escapa
-    de `except Exception` (BaseException): sin esto el documento queda
-    huérfano en su estado intermedio hasta el próximo arranque del worker."""
-    await _fail(session, job, doc, RuntimeError("cancelado: job_timeout de arq agotado"))
+    de `except Exception` (BaseException). Solo marca el JOB: el documento
+    queda en su estado intermedio para que el watchdog lo reanude (lo ya
+    sintetizado está persistido, reanudar es seguro)."""
+    await _fail(
+        session, job, None, RuntimeError("cancelado: job_timeout de arq agotado")
+    )
     raise asyncio.CancelledError
 
 
@@ -490,6 +493,11 @@ async def run_reprocess(ctx, job_id: str) -> None:
                     except speakable.TranslationUnavailable as exc:
                         await _fail(session, job, doc, exc)
                         return
+            else:
+                # reintento de párrafos cuyo TTS había fallado
+                for p in active:
+                    if p.estado_audio == "error":
+                        p.estado_audio = "pending"
 
             doc.estado = "synthesizing"
             await session.commit()

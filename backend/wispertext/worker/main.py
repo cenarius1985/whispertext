@@ -2,12 +2,10 @@
 
 import logging
 
+from arq import cron
 from arq.connections import RedisSettings
-from sqlalchemy import update
 
 from wispertext.config import get_settings
-from wispertext.db import get_sessionmaker
-from wispertext.models import Document, Job
 from wispertext.worker.jobs import (
     run_export,
     run_ingest,
@@ -16,43 +14,7 @@ from wispertext.worker.jobs import (
     synthesize_paragraph_task,
 )
 from wispertext.worker.voices import ensure_voices_downloaded
-
-
-async def _recover_orphans() -> None:
-    """Marca como error documentos/jobs quedados en estado intermedio.
-
-    Al arrancar el worker no hay jobs en ejecución: cualquier documento en
-    extracting/cleaning/synthesizing es huérfano de un crash previo (p. ej.
-    un fallo de BD a mitad de la ingesta) y sin esto quedaría 'limpiando'
-    para siempre (bug 2026-10-11). Los jobs encolados en Redis siguen vivos
-    y reescribirán su estado al ejecutarse.
-    """
-    sm = get_sessionmaker()
-    async with sm() as session:
-        docs = (
-            await session.execute(
-                update(Document)
-                .where(Document.estado.in_(("extracting", "cleaning", "synthesizing")))
-                .values(
-                    estado="error",
-                    error="interrumpido: el worker se reinició durante el proceso",
-                )
-            )
-        ).rowcount
-        jobs = (
-            await session.execute(
-                update(Job)
-                .where(Job.estado == "running")
-                .values(estado="error", error="interrumpido: reinicio del worker")
-            )
-        ).rowcount
-        await session.commit()
-    if docs or jobs:
-        logging.getLogger("wispertext.worker").warning(
-            "recovery: %d documento(s) y %d job(s) huérfanos marcados como error",
-            docs,
-            jobs,
-        )
+from wispertext.worker.watchdog import procesar_docs_huerfanos, watchdog
 
 
 async def startup(ctx: dict) -> None:
@@ -68,11 +30,13 @@ async def startup(ctx: dict) -> None:
     except Exception:  # noqa: BLE001
         log = logging.getLogger("wispertext.voices")
         log.exception("descarga de voces falló; se reintenta al reiniciar")
-    # Estados huérfanos de crashes previos → error visible (bug 2026-10-11)
+    # Al arrancar no hay jobs en ejecución: los documentos en estado
+    # intermedio son huérfanos de un crash → el watchdog decide si se
+    # reanudan (síntesis con párrafos pendientes) o quedan en error visible.
     try:
-        await _recover_orphans()
+        await procesar_docs_huerfanos(ctx["redis"], arranque=True)
     except Exception:  # noqa: BLE001
-        logging.getLogger("wispertext.worker").exception(
+        logging.getLogger("wispertext.watchdog").exception(
             "recovery de estados huérfanos falló"
         )
 
@@ -98,3 +62,7 @@ class WorkerSettings:
                           # CancelledError, que escapa al `except Exception`
                           # de run_ingest y deja el documento huérfano
     keep_result = 3_600
+    # Watchdog cada 5 min: reanuda síntesis interrumpidas (job muerto,
+    # timeout, crash). Con max_jobs=1 solo obtiene slot cuando el worker
+    # está libre, justo cuando hay un huérfano que atender.
+    cron_jobs = [cron(watchdog, minute=set(range(0, 60, 5)))]
