@@ -135,12 +135,13 @@ async def ensure_audio_for_paragraph(
     síntesis concurrentes del mismo texto (ADR-005).
     """
     settings = get_settings()
-    if paragraph.estado_audio in ("skipped",) or not paragraph.texto_hablado.strip():
+    if paragraph.estado_audio in ("skipped",):
         return None
 
-    # Hablado sin contenido audible (solo puntuación/símbolos): Piper genera un
-    # WAV vacío y ffmpeg falla con wave.Error. Se salta en lugar de error.
-    if not _AUDIBLE_RE.search(paragraph.texto_hablado):
+    # Hablado vacío o sin contenido audible (solo puntuación/símbolos, p. ej.
+    # una URL suelta): Piper genera un WAV vacío y ffmpeg falla con
+    # wave.Error. Se salta en lugar de quedar 'pending' eterno o error.
+    if not _AUDIBLE_RE.search(paragraph.texto_hablado or ""):
         paragraph.estado_audio = "skipped"
         paragraph.skip_reason = "hablado_vacio"
         await session.commit()
