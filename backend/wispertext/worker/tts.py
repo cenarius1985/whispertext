@@ -6,6 +6,7 @@ Piper, para poder enchufar Kokoro/Voicebox después sin tocar el pipeline.
 
 import hashlib
 import logging
+import re
 import shutil
 import subprocess
 import uuid
@@ -18,6 +19,9 @@ from wispertext.config import get_settings
 from wispertext.models import AudioAsset, Paragraph, ParagraphAudio
 
 log = logging.getLogger("wispertext.tts")
+
+# contenido audible = al menos una letra o dígito (con acentos es/EN)
+_AUDIBLE_RE = re.compile(r"[0-9A-Za-zÁÉÍÓÚÜÑáéíóúüñ]")
 
 
 class TTSError(RuntimeError):
@@ -132,6 +136,14 @@ async def ensure_audio_for_paragraph(
     """
     settings = get_settings()
     if paragraph.estado_audio in ("skipped",) or not paragraph.texto_hablado.strip():
+        return None
+
+    # Hablado sin contenido audible (solo puntuación/símbolos): Piper genera un
+    # WAV vacío y ffmpeg falla con wave.Error. Se salta en lugar de error.
+    if not _AUDIBLE_RE.search(paragraph.texto_hablado):
+        paragraph.estado_audio = "skipped"
+        paragraph.skip_reason = "hablado_vacio"
+        await session.commit()
         return None
 
     th = speech_hash(paragraph.texto_hablado)
