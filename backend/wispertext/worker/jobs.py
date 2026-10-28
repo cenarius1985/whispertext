@@ -5,7 +5,7 @@ import logging
 import uuid
 from pathlib import Path
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 
 from wispertext.config import get_settings
 from wispertext.db import get_sessionmaker
@@ -538,10 +538,33 @@ async def run_export(ctx, job_id: str) -> None:
                 )
                 .all()
             )
-            faltan = doc.total_parrafos_activos - len(rows)
-            if faltan > 0:
+            # Los párrafos skipped (código, figuras sin caption, fórmulas sin
+            # habla, editorial, hablado_vacio) NUNCA tendrán audio: contarlos
+            # contra los que sí tienen audio bloqueaba el export para siempre.
+            # Solo bloquean de verdad los pending (síntesis en curso) y los
+            # error (TTS fallido, se reintenta con reproceso).
+            sin_audio = dict(
+                (
+                    await session.execute(
+                        select(Paragraph.estado_audio, func.count())
+                        .where(
+                            Paragraph.document_id == doc.id,
+                            Paragraph.activo.is_(True),
+                            Paragraph.estado_audio.notin_(("ready", "skipped")),
+                        )
+                        .group_by(Paragraph.estado_audio)
+                    )
+                ).all()
+            )
+            if sin_audio.get("pending"):
                 raise RuntimeError(
-                    f"faltan {faltan} párrafos por sintetizar; espera a que termine"
+                    f"faltan {sin_audio['pending']} párrafos por sintetizar; "
+                    "espera a que termine"
+                )
+            if sin_audio.get("error"):
+                raise RuntimeError(
+                    f"{sin_audio['error']} párrafos fallaron al sintetizar; "
+                    "reprocesa el documento para reintentarlos"
                 )
 
             out_dir = Path(get_settings().media_dir) / "exports"
@@ -552,16 +575,23 @@ async def run_export(ctx, job_id: str) -> None:
                 export.duracion_total_seg = dur
                 export.tamano_bytes = final.stat().st_size
                 export.estado = "done"
+            # Un export fallido anterior pudo dejar el documento en 'error'
+            # vía _fail; el audio está completo, el doc vuelve a ready.
+            doc.estado = "ready"
+            doc.error = None
             job.detalle = {**job.detalle, "ruta": str(final), "duracion": dur}
             await _patch_job(session, job, estado="done")
         except Exception as exc:  # noqa: BLE001
+            # El fallo es del export, no del documento: solo se marcan el job
+            # y el registro de export (marcar el doc dejaba la tarjeta en
+            # 'error' para siempre aunque el audio estuviera completo).
             if export:
                 export.estado = "error"
-            await _fail(session, job, doc, exc)
+            await _fail(session, job, None, exc)
         except asyncio.CancelledError:
             if export:
                 export.estado = "error"
-            await _fail_cancelled(session, job, doc)
+            await _fail_cancelled(session, job, None)
 
 
 async def synthesize_paragraph_task(ctx, paragraph_id: str) -> None:
