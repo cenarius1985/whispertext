@@ -89,7 +89,10 @@ export default function ReaderView({ docId }: { docId: string }) {
     (delta: number) => {
       if (!hablables.length) return;
       const base = currentPos >= 0 ? currentPos : 0;
-      const next = Math.min(Math.max(base + delta, 0), hablables.length - 1);
+      const next = base + delta;
+      // Sin párrafo previo/siguiente: no hacer nada. Antes se recortaba al
+      // extremo y el auto-avance al terminar el último lo reproducía en bucle.
+      if (next < 0 || next >= hablables.length) return;
       reproducir(hablables[next]);
     },
     [hablables, currentPos, reproducir]
