@@ -6,7 +6,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Doc,
   Paragraph,
-  exportDocument,
   fetchDoc,
   fetchParagraphs,
   mediaUrl,
@@ -15,6 +14,7 @@ import {
 } from "@/lib/api";
 import { useDocumentEvents } from "@/lib/useDocumentEvents";
 import PlayerPanel from "@/components/PlayerPanel";
+import { useAudioExport } from "@/components/useAudioExport";
 
 export default function ReaderView({ docId }: { docId: string }) {
   const [doc, setDoc] = useState<Doc | null>(null);
@@ -27,6 +27,7 @@ export default function ReaderView({ docId }: { docId: string }) {
   const [error, setError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const exporter = useAudioExport();
 
   const cargar = useCallback(async () => {
     try {
@@ -289,7 +290,7 @@ export default function ReaderView({ docId }: { docId: string }) {
         onToggle={togglePlay}
         onPrev={() => saltar(-1)}
         onNext={() => saltar(1)}
-        onExport={() => exportDocument(docId)}
+        onExport={() => doc && exporter.start(doc)}
       />
 
       <audio
@@ -302,6 +303,7 @@ export default function ReaderView({ docId }: { docId: string }) {
         }}
         hidden
       />
+      {exporter.node}
     </div>
   );
 }

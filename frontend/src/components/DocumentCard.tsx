@@ -9,7 +9,6 @@ import {
   FORMATOS,
   Voice,
   deleteDocument,
-  exportDocument,
   fetchVoices,
   mediaUrl,
   renameDocument,
@@ -18,6 +17,7 @@ import {
   setDocCategories,
   uploadCover,
 } from "@/lib/api";
+import { useAudioExport } from "@/components/useAudioExport";
 
 export default function DocumentCard({
   doc,
@@ -36,6 +36,7 @@ export default function DocumentCard({
   const [menu, setMenu] = useState(false);
   const replaceRef = useRef<HTMLInputElement>(null);
   const coverRef = useRef<HTMLInputElement>(null);
+  const exporter = useAudioExport();
   const est = ESTADOS[doc.estado] ?? { label: doc.estado, cls: "bg-slate-100 text-slate-600" };
   const fmt = FORMATOS[doc.formato] ?? FORMATOS.pdf;
   const progreso =
@@ -216,7 +217,10 @@ export default function DocumentCard({
             </button>
             <button
               disabled={busy}
-              onClick={() => acciones(() => exportDocument(doc.id))}
+              onClick={() => {
+                setMenu(false);
+                exporter.start(doc);
+              }}
               className="block w-full px-4 py-2 text-left hover:bg-slate-50"
             >
               Exportar audio completo
@@ -278,6 +282,7 @@ export default function DocumentCard({
           e.target.value = "";
         }}
       />
+      {exporter.node}
     </article>
   );
 }

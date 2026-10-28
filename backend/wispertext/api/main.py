@@ -8,7 +8,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from wispertext.api.deps import close_arq
-from wispertext.api.routers import categories, documents, events, paragraphs, voices
+from wispertext.api.routers import (
+    categories,
+    documents,
+    events,
+    jobs,
+    paragraphs,
+    voices,
+)
 from wispertext.api.routers import settings as settings_router
 from wispertext.config import get_settings
 from wispertext.db import init_db
@@ -42,6 +49,7 @@ app.include_router(categories.router)
 app.include_router(settings_router.router)
 app.include_router(paragraphs.router)
 app.include_router(voices.router)
+app.include_router(jobs.router)
 app.include_router(events.router)
 
 # /media: audio, portadas, imágenes (rutas registradas en BD; sin listing)

@@ -62,6 +62,14 @@ export interface ExportRow {
   duracion_total_seg: number;
 }
 
+export interface JobOut {
+  id: string;
+  tipo: string;
+  estado: string; // queued | running | done | error
+  detalle: { export_id?: string } & Record<string, unknown>;
+  error: string | null;
+}
+
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) {
     let detail = res.statusText;
@@ -166,14 +174,29 @@ export async function reprocessDocument(
   );
 }
 
-export async function exportDocument(id: string): Promise<void> {
-  await json(
+export async function startExport(id: string): Promise<{ jobId: string; exportId: string }> {
+  const job = await json<JobOut>(
     await fetch(`${API_URL}/api/documents/${id}/export`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ formato: "mp3" }),
     })
   );
+  return { jobId: job.id, exportId: job.detalle?.export_id ?? "" };
+}
+
+export async function fetchJob(jobId: string): Promise<JobOut> {
+  return json(await fetch(`${API_URL}/api/jobs/${jobId}`, { cache: "no-store" }));
+}
+
+/** Dispara la descarga en el navegador (el backend manda Content-Disposition). */
+export function downloadFile(path: string): void {
+  const a = document.createElement("a");
+  a.href = path.startsWith("http") ? path : `${API_URL}${path}`;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
 }
 
 export async function renameDocument(id: string, titulo: string): Promise<void> {
