@@ -14,16 +14,24 @@ import {
 type Fase = "idle" | "consolidando" | "listo" | "error";
 
 const POLL_MS = 1500;
-const TIMEOUT_MS = 10 * 60_000;
+const TIMEOUT_MS = 15 * 60_000;
+
+const TEXTO_ETAPA: Record<string, string> = {
+  preparando_voz: "Preparando la voz del documento…",
+  descargando_musica: "Descargando música de YouTube…",
+  mezclando: "Mezclando música y voz con ducking…",
+};
 
 /**
  * Export con diálogo y descarga automática: lanza el job, muestra el estado
- * mientras consolida y al terminar dispara la descarga en el navegador
- * (el backend sirve el MP3 con Content-Disposition: attachment).
+ * (por etapas si trae música) y al terminar dispara la descarga en el
+ * navegador (el backend sirve el MP3 con Content-Disposition: attachment).
  */
 export function useAudioExport() {
   const [fase, setFase] = useState<Fase>("idle");
   const [titulo, setTitulo] = useState("");
+  const [etapa, setEtapa] = useState("");
+  const [conMusica, setConMusica] = useState(false);
   const [error, setError] = useState("");
   const [exportRow, setExportRow] = useState<ExportRow | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -43,19 +51,22 @@ export function useAudioExport() {
   }, [detener]);
 
   const start = useCallback(
-    async (doc: Doc) => {
+    async (doc: Doc, opts?: { musicaUrl?: string; volumenDb?: number }) => {
       detener();
       setTitulo(doc.titulo);
       setError("");
       setExportRow(null);
+      setEtapa("");
+      setConMusica(Boolean(opts?.musicaUrl));
       setFase("consolidando");
       try {
-        const { jobId, exportId } = await startExport(doc.id);
+        const { jobId, exportId } = await startExport(doc.id, opts);
         await new Promise<void>((resolve, reject) => {
           const t0 = Date.now();
           timer.current = setInterval(async () => {
             try {
               const job = await fetchJob(jobId);
+              setEtapa(String(job.detalle?.etapa ?? ""));
               if (job.estado === "done") {
                 detener();
                 resolve();
@@ -87,6 +98,10 @@ export function useAudioExport() {
     [detener]
   );
 
+  const textoTrabajo = conMusica
+    ? TEXTO_ETAPA[etapa] ?? "Preparando audio con música…"
+    : "Consolidando audio…";
+
   const node =
     fase === "idle" ? null : (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -94,7 +109,7 @@ export function useAudioExport() {
           {fase === "consolidando" && (
             <>
               <span className="mx-auto block h-10 w-10 animate-spin rounded-full border-4 border-brand-100 border-t-brand-600" />
-              <h3 className="mt-4 font-semibold text-slate-900">Consolidando audio…</h3>
+              <h3 className="mt-4 font-semibold text-slate-900">{textoTrabajo}</h3>
               <p className="mt-1 line-clamp-2 text-sm text-slate-500">«{titulo}»</p>
               <p className="mt-3 text-xs text-slate-400">
                 La descarga comenzará en breve. Podés seguir usando la app.
@@ -104,7 +119,9 @@ export function useAudioExport() {
           {fase === "listo" && (
             <>
               <span className="text-3xl">🎧</span>
-              <h3 className="mt-2 font-semibold text-slate-900">¡Audio listo!</h3>
+              <h3 className="mt-2 font-semibold text-slate-900">
+                {conMusica ? "¡Audio con música listo!" : "¡Audio listo!"}
+              </h3>
               <p className="mt-1 text-sm text-slate-500">
                 {exportRow ? duracionLegible(exportRow.duracion_total_seg) : ""} de audio · MP3
               </p>

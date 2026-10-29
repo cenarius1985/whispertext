@@ -60,13 +60,15 @@ export interface ExportRow {
   estado: string;
   download_url: string | null;
   duracion_total_seg: number;
+  tamano_bytes?: number;
+  created_at?: string | null;
 }
 
 export interface JobOut {
   id: string;
-  tipo: string;
+  tipo: string; // ingest | export | export_musica | …
   estado: string; // queued | running | done | error
-  detalle: { export_id?: string } & Record<string, unknown>;
+  detalle: { export_id?: string; etapa?: string } & Record<string, unknown>;
   error: string | null;
 }
 
@@ -174,12 +176,20 @@ export async function reprocessDocument(
   );
 }
 
-export async function startExport(id: string): Promise<{ jobId: string; exportId: string }> {
+export async function startExport(
+  id: string,
+  opts?: { musicaUrl?: string; volumenDb?: number }
+): Promise<{ jobId: string; exportId: string }> {
+  const body: Record<string, unknown> = { formato: "mp3" };
+  if (opts?.musicaUrl) {
+    body.musica_url = opts.musicaUrl;
+    body.musica_volumen_db = opts.volumenDb ?? -15;
+  }
   const job = await json<JobOut>(
     await fetch(`${API_URL}/api/documents/${id}/export`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ formato: "mp3" }),
+      body: JSON.stringify(body),
     })
   );
   return { jobId: job.id, exportId: job.detalle?.export_id ?? "" };

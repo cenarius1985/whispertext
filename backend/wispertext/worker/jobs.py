@@ -27,6 +27,7 @@ from wispertext.worker.diffing import align_versions
 from wispertext.worker.exporter import export_document_mp3
 from wispertext.worker.extraction import RawBlock
 from wispertext.worker.extractors import extract_any
+from wispertext.worker.musica import mezclar_con_musica, pista_fondo
 from wispertext.worker.tts import TTSError, ensure_audio_for_paragraph
 
 log = logging.getLogger("wispertext.jobs")
@@ -511,6 +512,62 @@ async def run_reprocess(ctx, job_id: str) -> None:
             await _fail_cancelled(session, job, doc)
 
 
+async def _pistas_audio(session, doc: Document) -> list:
+    """(Paragraph, AudioAsset) activos con audio, en orden de índice."""
+    return (
+        (
+            await session.execute(
+                select(Paragraph, AudioAsset)
+                .join(ParagraphAudio, ParagraphAudio.paragraph_id == Paragraph.id)
+                .join(AudioAsset, AudioAsset.id == ParagraphAudio.audio_id)
+                .where(Paragraph.document_id == doc.id, Paragraph.activo.is_(True))
+                .order_by(Paragraph.indice)
+            )
+        )
+        .all()
+    )
+
+
+async def _validar_audio_completo(session, doc: Document) -> None:
+    """Bloquea el export si queda síntesis pendiente o fallida.
+
+    Los párrafos skipped (código, figuras sin caption, fórmulas sin habla,
+    editorial, hablado_vacio) NUNCA tendrán audio: contarlos contra los que
+    sí tienen audio bloqueaba el export para siempre (bug 2026-10-28).
+    """
+    sin_audio = dict(
+        (
+            await session.execute(
+                select(Paragraph.estado_audio, func.count())
+                .where(
+                    Paragraph.document_id == doc.id,
+                    Paragraph.activo.is_(True),
+                    Paragraph.estado_audio.notin_(("ready", "skipped")),
+                )
+                .group_by(Paragraph.estado_audio)
+            )
+        ).all()
+    )
+    if sin_audio.get("pending"):
+        raise RuntimeError(
+            f"faltan {sin_audio['pending']} párrafos por sintetizar; "
+            "espera a que termine"
+        )
+    if sin_audio.get("error"):
+        raise RuntimeError(
+            f"{sin_audio['error']} párrafos fallaron al sintetizar; "
+            "reprocesa el documento para reintentarlos"
+        )
+
+
+async def _etapa(session, job: Job, nombre: str) -> None:
+    """Publica la etapa del job (descargando_musica, mezclando, …) para el
+    diálogo de progreso del frontend."""
+    job.detalle = {**job.detalle, "etapa": nombre}
+    await session.commit()
+    await _job_event(job)
+
+
 async def run_export(ctx, job_id: str) -> None:
     sm = get_sessionmaker()
     async with sm() as session:
@@ -526,46 +583,8 @@ async def run_export(ctx, job_id: str) -> None:
                 export.estado = "running"
                 await session.commit()
 
-            rows = (
-                (
-                    await session.execute(
-                        select(Paragraph, AudioAsset)
-                        .join(ParagraphAudio, ParagraphAudio.paragraph_id == Paragraph.id)
-                        .join(AudioAsset, AudioAsset.id == ParagraphAudio.audio_id)
-                        .where(Paragraph.document_id == doc.id, Paragraph.activo.is_(True))
-                        .order_by(Paragraph.indice)
-                    )
-                )
-                .all()
-            )
-            # Los párrafos skipped (código, figuras sin caption, fórmulas sin
-            # habla, editorial, hablado_vacio) NUNCA tendrán audio: contarlos
-            # contra los que sí tienen audio bloqueaba el export para siempre.
-            # Solo bloquean de verdad los pending (síntesis en curso) y los
-            # error (TTS fallido, se reintenta con reproceso).
-            sin_audio = dict(
-                (
-                    await session.execute(
-                        select(Paragraph.estado_audio, func.count())
-                        .where(
-                            Paragraph.document_id == doc.id,
-                            Paragraph.activo.is_(True),
-                            Paragraph.estado_audio.notin_(("ready", "skipped")),
-                        )
-                        .group_by(Paragraph.estado_audio)
-                    )
-                ).all()
-            )
-            if sin_audio.get("pending"):
-                raise RuntimeError(
-                    f"faltan {sin_audio['pending']} párrafos por sintetizar; "
-                    "espera a que termine"
-                )
-            if sin_audio.get("error"):
-                raise RuntimeError(
-                    f"{sin_audio['error']} párrafos fallaron al sintetizar; "
-                    "reprocesa el documento para reintentarlos"
-                )
+            rows = await _pistas_audio(session, doc)
+            await _validar_audio_completo(session, doc)
 
             out_dir = Path(get_settings().media_dir) / "exports"
             final, dur = export_document_mp3(doc, [a.ruta for _, a in rows], out_dir)
@@ -585,6 +604,67 @@ async def run_export(ctx, job_id: str) -> None:
             # El fallo es del export, no del documento: solo se marcan el job
             # y el registro de export (marcar el doc dejaba la tarjeta en
             # 'error' para siempre aunque el audio estuviera completo).
+            if export:
+                export.estado = "error"
+            await _fail(session, job, None, exc)
+        except asyncio.CancelledError:
+            if export:
+                export.estado = "error"
+            await _fail_cancelled(session, job, None)
+
+
+async def run_export_musica(ctx, job_id: str) -> None:
+    """Export con música de fondo (docs/11): voz + pista de YouTube con
+    ducking y bucle. detalle = {export_id, musica_url, musica_volumen_db,
+    etapa} — la etapa alimenta el diálogo de progreso del frontend."""
+    sm = get_sessionmaker()
+    async with sm() as session:
+        job = await session.get(Job, job_id)
+        if job is None:
+            return
+        doc = await session.get(Document, job.document_id)
+        export_id = job.detalle.get("export_id")
+        export = await session.get(Export, export_id) if export_id else None
+        musica_url = (job.detalle or {}).get("musica_url", "")
+        volumen_db = float((job.detalle or {}).get("musica_volumen_db", -15.0))
+        try:
+            await _patch_job(session, job, estado="running")
+            if export:
+                export.estado = "running"
+                await session.commit()
+
+            rows = await _pistas_audio(session, doc)
+            await _validar_audio_completo(session, doc)
+
+            await _etapa(session, job, "preparando_voz")
+            out_dir = Path(get_settings().media_dir) / "exports"
+            voz, dur = export_document_mp3(doc, [a.ruta for _, a in rows], out_dir)
+
+            await _etapa(session, job, "descargando_musica")
+            pista = pista_fondo(musica_url, Path(get_settings().media_dir))
+
+            await _etapa(session, job, "mezclando")
+            final = out_dir / f"{doc.id}_v{doc.version_actual}_con_musica.mp3"
+            mezclar_con_musica(voz, pista, final, volumen_db, get_settings().tts_bitrate)
+
+            if export:
+                export.ruta = str(final)
+                export.duracion_total_seg = dur
+                export.tamano_bytes = final.stat().st_size
+                export.estado = "done"
+            # Como en run_export: un fallo anterior pudo dejar el doc en
+            # 'error'; el audio está completo, el doc vuelve a ready.
+            doc.estado = "ready"
+            doc.error = None
+            job.detalle = {
+                **job.detalle,
+                "ruta": str(final),
+                "duracion": dur,
+                "etapa": "done",
+            }
+            await _patch_job(session, job, estado="done")
+        except Exception as exc:  # noqa: BLE001
+            # El fallo es del export con música, no del documento.
             if export:
                 export.estado = "error"
             await _fail(session, job, None, exc)

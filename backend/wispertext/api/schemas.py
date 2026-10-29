@@ -90,6 +90,10 @@ class ReprocessIn(BaseModel):
 
 class ExportIn(BaseModel):
     formato: str = "mp3"
+    # Música de fondo (docs/11): URL de YouTube (canción o playlist) que se
+    # mezcla bajo la voz con ducking; volumen en dB (más negativo = más baja).
+    musica_url: str | None = None
+    musica_volumen_db: float = Field(default=-15.0, ge=-40.0, le=0.0)
 
 
 class ExportOut(BaseModel):

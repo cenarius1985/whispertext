@@ -33,6 +33,7 @@ from wispertext.models import (
     ReadingProgress,
     Voice,
 )
+from wispertext.worker.musica import es_url_youtube
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
@@ -302,19 +303,34 @@ async def export_document(
         raise HTTPException(404, "documento no existe")
     if opts.formato != "mp3":
         raise HTTPException(400, "solo mp3 por ahora (M4B en P2)")
+    con_musica = bool((opts.musica_url or "").strip())
+    if con_musica and not es_url_youtube(opts.musica_url):
+        raise HTTPException(400, "musica_url debe ser de youtube.com o youtu.be")
 
-    export = Export(document_id=doc.id, formato=opts.formato, estado="queued")
+    export = Export(
+        document_id=doc.id,
+        formato="mp3m" if con_musica else opts.formato,
+        estado="queued",
+    )
     session.add(export)
     await session.flush()
+    detalle = {"export_id": str(export.id)}
+    if con_musica:
+        detalle.update(
+            musica_url=opts.musica_url.strip(),
+            musica_volumen_db=opts.musica_volumen_db,
+        )
     job = Job(
         document_id=doc.id,
-        tipo="export",
+        tipo="export_musica" if con_musica else "export",
         estado="queued",
-        detalle={"export_id": str(export.id)},
+        detalle=detalle,
     )
     session.add(job)
     await session.commit()
-    await arq.enqueue_job("run_export", str(job.id))
+    await arq.enqueue_job(
+        "run_export_musica" if con_musica else "run_export", str(job.id)
+    )
     return job
 
 

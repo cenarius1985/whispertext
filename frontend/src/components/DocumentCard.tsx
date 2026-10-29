@@ -225,6 +225,13 @@ export default function DocumentCard({
             >
               Exportar audio completo
             </button>
+            <Link
+              href={`/editar-audio?doc=${doc.id}`}
+              onClick={() => setMenu(false)}
+              className="block w-full px-4 py-2 text-left hover:bg-slate-50"
+            >
+              Editar audio
+            </Link>
             <button
               disabled={busy}
               onClick={() => {

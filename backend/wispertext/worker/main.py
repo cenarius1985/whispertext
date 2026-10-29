@@ -8,6 +8,7 @@ from arq.connections import RedisSettings
 from wispertext.config import get_settings
 from wispertext.worker.jobs import (
     run_export,
+    run_export_musica,
     run_ingest,
     run_reprocess,
     run_replace,
@@ -51,6 +52,7 @@ class WorkerSettings:
         run_replace,
         run_reprocess,
         run_export,
+        run_export_musica,
         synthesize_paragraph_task,
     )
     on_startup = startup

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Doc, Paragraph } from "@/lib/api";
 
 interface Props {
@@ -112,6 +113,12 @@ export default function PlayerPanel(p: Props) {
         >
           Exportar audio completo
         </button>
+        <Link
+          href={`/editar-audio?doc=${p.doc.id}`}
+          className="block text-center text-xs text-slate-500 underline-offset-2 hover:text-brand-600 hover:underline"
+        >
+          Editar audio · música de fondo
+        </Link>
         <p className="text-[11px] leading-4 text-slate-400">
           Atajos: espacio play/pausa · ↑/↓ párrafo. El párrafo en reproducción queda
           resaltado a la izquierda.

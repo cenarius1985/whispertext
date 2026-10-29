@@ -45,5 +45,7 @@ async def download_export(export_id: str, session: AsyncSession = Depends(get_se
     titulo = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", doc.titulo if doc else "audiolibro")
     titulo = re.sub(r"\s+", " ", titulo).strip()[:80] or "audiolibro"
     version = f" v{doc.version_actual}" if doc else ""
-    nombre = f"{titulo}{version}.mp3"
+    # mp3m = export con música de fondo (docs/11): se distingue en el nombre
+    con_musica = " (con música)" if export.formato == "mp3m" else ""
+    nombre = f"{titulo}{version}{con_musica}.mp3"
     return FileResponse(export.ruta, media_type="audio/mpeg", filename=nombre)
