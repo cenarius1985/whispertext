@@ -109,17 +109,22 @@ MAX_BONSAI_FORMULAS = 60  # tope de ecuaciones a reconstruir por versión
 
 
 def _formula_plausible(original_lineal: str, latex: str) -> bool:
-    """Anti-alucinación: el LaTeX debe compartir algún token con el original."""
+    """Anti-alucinación: el LaTeX debe compartir algún token con el original.
+
+    El LaTeX se normaliza quitando backslashes/llaves/subíndices antes de
+    comparar: 'G_r(\\tau)' debe matchear el 'Gr' del texto lineal — sin eso
+    las ecuaciones de símbolos (Gr, kr, dτ) se rechazaban siempre.
+    """
     import re as _re
 
     toks = [
         t
         for t in _re.findall(r"[A-Za-z]{2,}|\d+", original_lineal)
-        if t.lower() not in {"de", "la", "el", "los", "las"}
+        if t.lower() not in {"de", "la", "el", "los", "las", "vecinos"}
     ]
     if not toks:
         return True
-    latex_low = latex.lower()
+    latex_low = _re.sub(r"[\\{}_^]", "", latex).lower()
     return any(t.lower() in latex_low for t in toks[:10])
 
 
