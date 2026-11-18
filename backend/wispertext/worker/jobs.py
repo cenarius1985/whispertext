@@ -722,27 +722,40 @@ async def run_render_md(ctx, job_id: str) -> None:
             # resuelve SIN LLM; el resto va por lotes (docs/12 §6).
             pasada_determinista(active)
 
-            # Ecuaciones-imagen: los PNG nativos del PDF son diminutos
-            # (p.ej. 273×53) y al escalarlos se ven borrosos. Con el texto
-            # lineal + los fragmentos absorbidos alrededor, GLM reconstruye
-            # LaTeX que KaTeX renderiza nítido. La guarda anti-alucinación se
-            # evalúa contra el TEXTO LINEAL de la ecuación (contra el contexto
-            # en prosa rechazaba todo). Fail-soft: sin LaTeX plausible queda
-            # "" y se muestra la imagen.
+            # Ecuaciones: reconstrucción LaTeX con GLM (docs/12).
+            #  · con imagen: el PNG es diminuto (273×53) — texto lineal +
+            #    fragmentos vecinos como contexto.
+            #  · SIN imagen (número huérfano): los fragmentos absorbidos
+            #    alrededor SON la ecuación partida (p.ej. (6) = 'A(+)' +
+            #    '!n/(N−1)' + 'TEmáx' + 'TEn = TEmín') — sin reconstrucción
+            #    la ecuación desaparecía del lector.
+            # Guarda anti-alucinación contra el texto lineal. Fail-soft.
             await _etapa(session, job, "reconstruyendo_ecuaciones")
             for i, p in enumerate(active):
-                if p.tipo != "ecuacion" or p.texto_latex or not p.imagen:
+                if p.tipo != "ecuacion" or p.texto_latex:
                     continue
+                if (p.texto_md or "").startswith("$$"):
+                    continue  # reconstrucción previa preservada
                 linear = (p.texto_normalizado or p.texto_original or "").strip()
                 fragmentos = " ".join(
                     (q.texto_normalizado or q.texto_original or "").strip()
                     for q in active[max(0, i - 4) : i + 5]
                     if q.tipo == "texto" and q.texto_md == ""
                 )[:600]
-                rec = bonsai_formula(
-                    f"{linear}\nFragmentos vecinos: {fragmentos}" if fragmentos else linear
-                )
-                if rec and rec.get("latex") and _formula_plausible(linear, rec["latex"]):
+                if p.imagen:
+                    lineal_recon = (
+                        f"{linear}\nFragmentos vecinos: {fragmentos}"
+                        if fragmentos
+                        else linear
+                    )
+                else:
+                    lineal_recon = fragmentos or linear
+                if not lineal_recon.strip():
+                    continue
+                rec = bonsai_formula(lineal_recon)
+                if rec and rec.get("latex") and _formula_plausible(
+                    lineal_recon, rec["latex"]
+                ):
                     p.texto_md = f"$${rec['latex']}$$"
 
             # Fórmulas linealizadas que el extractor dejó como bloques tipo
