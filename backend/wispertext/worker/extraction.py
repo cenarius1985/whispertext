@@ -294,8 +294,10 @@ def extract_pdf(path: str) -> ExtractionResult:
                 if txt.strip():
                     if _is_equation(txt):
                         # ecuación display: se renderiza fiel y el texto lineal
-                        # se conserva para que Bonsai reconstruya LaTeX+habla
-                        png = _render_clip(page, fitz.Rect(b["bbox"]), dpi=170)
+                        # se conserva para que Bonsai reconstruya LaTeX+habla.
+                        # DPI alto: las ecuaciones son regiones diminutas (con
+                        # 170 dpi quedaban PNGs de 273×53, ilegibles al escalar)
+                        png = _render_clip(page, fitz.Rect(b["bbox"]), dpi=400)
                         items.append(
                             {"tipo": "ecuacion", "texto": txt, "y": b["bbox"][1],
                              "rect": b["bbox"], "png": png}

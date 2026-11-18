@@ -137,3 +137,13 @@ rompería esa relación; por bloque la conserva intacta.
 - **BONSAI_API_KEY** (env/compose): los endpoints en la nube (api.z.ai)
   requieren Authorization: Bearer; sin clave todo el paso LLM cae al
   fallback determinista con warnings claros en el log.
+
+## 8. Imágenes de ecuación en alta resolución (feedback v5)
+
+Los PNG de ecuación se extraían a 170 dpi → 273×53 px, ilegibles al
+escalar. Ahora `_render_clip` usa **400 dpi** para ecuaciones (las figuras
+siguen a 150: son regiones grandes). Para documentos ya ingestados sin
+re-procesar: `backend/regen_images.py` re-extrae y SOBRESCRIBE los PNG en
+las rutas ya registradas (la BD no cambia; los bloques se corresponden 1:1
+con los índices de párrafo). El escalado del lector volvió a suave (sin
+pixelado).

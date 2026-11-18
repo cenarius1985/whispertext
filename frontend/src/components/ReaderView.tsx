@@ -278,9 +278,9 @@ export default function ReaderView({ docId }: { docId: string }) {
                       alt={p.tipo === "figura" ? p.texto || "figura" : "ecuación"}
                       className={[
                         "mx-auto rounded-lg ring-1 ring-slate-200",
-                        // los PNG de ecuación son diminutos (p.ej. 273×53):
-                        // crisp-edges evita el borroncito del escalado bilineal
-                        p.tipo === "figura" ? "max-h-96" : "max-h-60 [image-rendering:pixelated]",
+                        // ecuaciones re-renderizadas a 400 dpi (docs/12):
+                        // escalado suave normal, sin pixelado
+                        p.tipo === "figura" ? "max-h-96" : "max-h-60",
                       ].join(" ")}
                     />
                     {p.texto_md !== "" && (
