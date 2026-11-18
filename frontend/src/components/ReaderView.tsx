@@ -304,7 +304,9 @@ export default function ReaderView({ docId }: { docId: string }) {
                       )
                     }
                     className={[
-                      "flex-1 text-[15px]",
+                      // min-w-0: sin esto el flex no encoge y las fórmulas
+                      // largas desbordan/recortan la columna del lector
+                      "min-w-0 flex-1 text-[15px]",
                       p.tipo === "titulo"
                         ? "font-semibold text-slate-900"
                         : "text-slate-700",

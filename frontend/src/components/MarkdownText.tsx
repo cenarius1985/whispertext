@@ -84,11 +84,12 @@ function mdAHtml(md: string): string {
   while (i < lineas.length) {
     const l = lineas[i];
 
-    // $$ display math (una o varias líneas)
+    // $$ display math (una o varias líneas). KaTeX no corta línea: sin
+    // overflow-x la fórmula larga desborda la columna y se ve recortada.
     const dm = l.match(/^\s*\$\$(.+)\$\$\s*$/);
     if (dm) {
       flush();
-      out.push(katexHtml(dm[1], true));
+      out.push(`<div class="my-2 overflow-x-auto">${katexHtml(dm[1], true)}</div>`);
       i++;
       continue;
     }
@@ -98,7 +99,7 @@ function mdAHtml(md: string): string {
       i++;
       while (i < lineas.length && !/\$\$/.test(lineas[i])) trozo.push(lineas[i++]);
       if (i < lineas.length) trozo.push(lineas[i++].replace(/\$\$\s*$/, ""));
-      out.push(katexHtml(trozo.join(" ").trim(), true));
+      out.push(`<div class="my-2 overflow-x-auto">${katexHtml(trozo.join(" ").trim(), true)}</div>`);
       continue;
     }
 
