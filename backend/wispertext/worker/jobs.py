@@ -31,6 +31,7 @@ from wispertext.worker.extractors import extract_any
 from wispertext.worker.musica import mezclar_con_musica, pista_fondo
 from wispertext.worker.render_md import (
     _llm_markdown,
+    es_bloque_formula,
     limpieza_determinista,
     lotes,
     matizar_inline,
@@ -709,12 +710,12 @@ async def run_render_md(ctx, job_id: str) -> None:
             )
             por_id = {str(p.id): p for p in active}
 
-            # Re-ejecutar regenera todo MENOS las ecuaciones $$ ya
-            # reconstruidas: el resultado de GLM varía por corrida
-            # (throttling) y sin esto una corrida mala se jugaba las
-            # reconstrucciones buenas de la anterior (1/17 tras un 5/17).
+            # Re-ejecutar regenera todo MENOS las fórmulas $$ ya reconstruidas
+            # (ecuaciones Y bloques-texto formulares): el resultado de GLM
+            # varía por corrida (throttling) y sin esto una corrida mala se
+            # jugaba las reconstrucciones buenas de la anterior.
             for p in active:
-                if p.tipo == "ecuacion" and (p.texto_md or "").startswith("$$"):
+                if (p.texto_md or "").startswith("$$"):
                     continue
                 p.texto_md = None
             # Lo resoluble a ciegas (ecuaciones, tablas, fragmentos) se
@@ -742,6 +743,20 @@ async def run_render_md(ctx, job_id: str) -> None:
                     f"{linear}\nFragmentos vecinos: {fragmentos}" if fragmentos else linear
                 )
                 if rec and rec.get("latex") and _formula_plausible(linear, rec["latex"]):
+                    p.texto_md = f"$${rec['latex']}$$"
+
+            # Fórmulas linealizadas que el extractor dejó como bloques tipo
+            # texto (p.ej. 'x(IR(x) −¯IR)(IW(x; p) −¯IW) pP'): misma
+            # reconstrucción LaTeX que las ecuaciones — el lote genérico las
+            # devolvía casi iguales (feedback 2026-11-18).
+            for p in active:
+                if p.tipo not in ("texto", "titulo") or p.texto_md is not None:
+                    continue
+                crudo = (p.texto_normalizado or p.texto_original or "").strip()
+                if not es_bloque_formula(crudo):
+                    continue
+                rec = bonsai_formula(crudo)
+                if rec and rec.get("latex") and _formula_plausible(crudo, rec["latex"]):
                     p.texto_md = f"$${rec['latex']}$$"
             await session.commit()
 

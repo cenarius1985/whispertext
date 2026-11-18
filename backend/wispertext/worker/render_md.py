@@ -191,6 +191,25 @@ def es_fragmento_matematico(texto: str) -> bool:
     return len(mathy) >= max(2, len(toks) - 1)
 
 
+# bloques de texto que son UNA FÓRMULA linealizada (ecuación partida por el
+# extractor en bloques tipo=texto): operadores matemáticos inequívocos y
+# cero palabras de prosa. Se enrutan a la reconstrucción LaTeX, no al lote
+# genérico. ('RESEARCH ARTICLE' NO matchea: no hay operadores)
+_OPS_FUERTES = re.compile(r"[=±∗×·/∑∫≤≥∝→∆∂∥]")
+_OPS_MEDIA = re.compile(r"[−¯^_]")
+
+
+def es_bloque_formula(texto: str) -> bool:
+    t = texto.strip().rstrip(",;")
+    if not t or len(t) > 220:
+        return False
+    if any(w in _COMUNES for w in re.findall(r"[a-záéíóúñü]{2,}", t.lower())):
+        return False
+    fuertes = len(_OPS_FUERTES.findall(t))
+    medias = len(_OPS_MEDIA.findall(t))
+    return fuertes >= 2 or (fuertes >= 1 and medias >= 1) or medias >= 2
+
+
 def pasada_determinista(paragraphs) -> None:
     """Resuelve SIN LLM lo que se puede resolver a ciegas (docs/12):
 
@@ -204,12 +223,18 @@ def pasada_determinista(paragraphs) -> None:
 
     # 1) ecuaciones
     for p in paragraphs:
-        if p.tipo == "ecuacion":
-            p.texto_md = f"$${p.texto_latex}$$" if p.texto_latex else ""
-            if not p.texto_latex and _EQ_HUERFANO.match(crudo_de(p)):
-                # número huérfano: el PNG (si llegó a recortarse) es solo el
-                # número — se elimina la asociación y el bloque se oculta
-                p.imagen = None
+        if p.tipo != "ecuacion":
+            continue
+        # preservar reconstrucciones $$ de corridas anteriores: el reset ya
+        # las salva, pero esta pasada las pisaba con '' (bug 2026-11-18:
+        # una corrida perdía lo ganado por la anterior pese al reset conservador)
+        if (p.texto_md or "").startswith("$$"):
+            continue
+        p.texto_md = f"$${p.texto_latex}$$" if p.texto_latex else ""
+        if not p.texto_latex and _EQ_HUERFANO.match(crudo_de(p)):
+            # número huérfano: el PNG (si llegó a recortarse) es solo el
+            # número — se elimina la asociación y el bloque se oculta
+            p.imagen = None
 
     indices = {id(p): i for i, p in enumerate(paragraphs)}
     pag_ecuaciones = [i for i, p in enumerate(paragraphs) if p.tipo == "ecuacion"]
@@ -323,6 +348,8 @@ def _llm_markdown(bloques: list[tuple[str, str]]) -> dict[str, str] | None:
                     "model": cfg["model"],
                     "messages": [{"role": "user", "content": prompt}],
                     "temperature": 0,
+                    # sin razonamiento: más rápido y el JSON llega entero
+                    "thinking": {"type": "disabled"},
                 },
                 headers=_headers(cfg),
                 timeout=settings.render_llm_timeout_s,

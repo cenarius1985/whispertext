@@ -65,7 +65,9 @@ def bonsai_formula(texto_lineal: str) -> dict | None:
                 "model": cfg["model"],
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0,
-                # GLM 5.x razona: si no, el contenido llega vacío
+                # sin razonamiento: con thinking activo quemaba 2000 tokens
+                # deliberando y el contenido llegaba vacío (finish_reason: length)
+                "thinking": {"type": "disabled"},
                 "max_tokens": 2000,
             },
             headers=_headers(cfg),
@@ -110,6 +112,7 @@ def bonsai_is_editorial(texto: str, contexto: str = "") -> bool | None:
                 "model": cfg["model"],
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0,
+                "thinking": {"type": "disabled"},
                 "max_tokens": 400,
             },
             headers=_headers(cfg),
