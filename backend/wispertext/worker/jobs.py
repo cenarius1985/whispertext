@@ -709,9 +709,13 @@ async def run_render_md(ctx, job_id: str) -> None:
             )
             por_id = {str(p.id): p for p in active}
 
-            # Re-ejecutar = regenerar TODO: sin reset, los markdown de una
-            # corrida anterior (no NULL) se saltaban y quedaban mezclados.
+            # Re-ejecutar regenera todo MENOS las ecuaciones $$ ya
+            # reconstruidas: el resultado de GLM varía por corrida
+            # (throttling) y sin esto una corrida mala se jugaba las
+            # reconstrucciones buenas de la anterior (1/17 tras un 5/17).
             for p in active:
+                if p.tipo == "ecuacion" and (p.texto_md or "").startswith("$$"):
+                    continue
                 p.texto_md = None
             # Lo resoluble a ciegas (ecuaciones, tablas, fragmentos) se
             # resuelve SIN LLM; el resto va por lotes (docs/12 §6).
@@ -748,7 +752,12 @@ async def run_render_md(ctx, job_id: str) -> None:
                 mds = _llm_markdown(grupo) or {}
                 for bid, crudo in grupo:
                     p = por_id[bid]
-                    p.texto_md = matizar_inline(mds.get(bid) or limpieza_determinista(crudo))
+                    md = mds.get(bid)
+                    # '' solo es legítimo en fragmentos cortos: el LLM a veces
+                    # "absorbía" prosa larga en otro bloque y la ocultaba.
+                    if md == "" and len(crudo) > 80:
+                        md = None
+                    p.texto_md = matizar_inline(md or limpieza_determinista(crudo))
                 job.hecho = i + 1
                 await session.commit()
                 await _job_event(job)
