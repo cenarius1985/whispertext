@@ -146,6 +146,12 @@ _SIMB_SUB = re.compile(r"\b([TRBMSEFW])(\d)\b")
 
 # ── Fragmentos matemáticos sueltos (alrededor de ecuaciones-imagen) ─────────
 
+# ecuación cuyo texto extraído es SOLO el número ("(3)", ", (6)"): los
+# glifos reales eran vectoriales fuera del bloque de texto — el PNG que
+# se recortó del bbox no contiene más que el número (basura visual)
+_EQ_HUERFANO = re.compile(r"^[\s,(;.·–—-]*\d{1,3}[\s),.;]*$")
+
+
 _COMUNES = {
     "de", "la", "el", "los", "las", "que", "con", "para", "por", "una", "un",
     "como", "donde", "este", "esta", "es", "son", "se", "en", "y", "o", "del",
@@ -200,6 +206,10 @@ def pasada_determinista(paragraphs) -> None:
     for p in paragraphs:
         if p.tipo == "ecuacion":
             p.texto_md = f"$${p.texto_latex}$$" if p.texto_latex else ""
+            if not p.texto_latex and _EQ_HUERFANO.match(crudo_de(p)):
+                # número huérfano: el PNG (si llegó a recortarse) es solo el
+                # número — se elimina la asociación y el bloque se oculta
+                p.imagen = None
 
     indices = {id(p): i for i, p in enumerate(paragraphs)}
     pag_ecuaciones = [i for i, p in enumerate(paragraphs) if p.tipo == "ecuacion"]
