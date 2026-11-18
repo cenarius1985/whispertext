@@ -253,7 +253,9 @@ export default function ReaderView({ docId }: { docId: string }) {
             // ecuación huérfano) — sin imagen no hay nada que mostrar
             if (p.texto_md === "" && !p.imagen_url) return null;
             const esVisual =
-              (p.tipo === "figura" || p.tipo === "ecuacion") && p.imagen_url;
+              (p.tipo === "figura" || p.tipo === "ecuacion") &&
+              p.imagen_url &&
+              !(p.texto_md ?? "").startsWith("$$"); // LaTeX reconstruido > PNG borroso
             return (
               <div
                 key={p.id}
@@ -273,14 +275,21 @@ export default function ReaderView({ docId }: { docId: string }) {
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={mediaUrl(p.imagen_url)}
-                      alt={p.texto || (p.tipo === "figura" ? "figura" : "ecuación")}
-                      className="mx-auto max-h-96 rounded-lg ring-1 ring-slate-200"
+                      alt={p.tipo === "figura" ? p.texto || "figura" : "ecuación"}
+                      className={[
+                        "mx-auto rounded-lg ring-1 ring-slate-200",
+                        // los PNG de ecuación son diminutos (p.ej. 273×53):
+                        // crisp-edges evita el borroncito del escalado bilineal
+                        p.tipo === "figura" ? "max-h-96" : "max-h-60 [image-rendering:pixelated]",
+                      ].join(" ")}
                     />
-                    <MarkdownText
-                      md={p.texto_md}
-                      fallback={p.texto}
-                      className="mt-1 text-xs leading-5 text-slate-500"
-                    />
+                    {p.texto_md !== "" && (
+                      <MarkdownText
+                        md={p.texto_md || null}
+                        fallback={p.texto}
+                        className="mt-1 text-xs leading-5 text-slate-500"
+                      />
+                    )}
                   </figure>
                 ) : (
                   <MarkdownText

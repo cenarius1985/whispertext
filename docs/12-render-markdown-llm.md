@@ -112,3 +112,28 @@ rompería esa relación; por bloque la conserva intacta.
    (el texto extraído lineal era irrecuperable).
 4. `selectinload(Paragraph.imagen)` obligatorio en el job (lazy load en
    async → MissingGreenlet).
+
+## 7. Iteración v5 (feedback del usuario, 2026-11-18)
+
+- **NULL ≠ ''**: la columna pasó a nullable sin default. NULL = sin procesar
+  (lector muestra texto plano), '' = absorbido (oculto). La v3 creaba con
+  DEFAULT '' y la API los nulificaba: los fragmentos absorbidos se veían.
+- **Tabla de símbolos** (✓/△/n/a): detección propia + cabecera previa
+  ('Técnica BMD Ct.Th Ct.Po' — ojo: los puntos internos de 'Ct.Th' NO son
+  fin de oración) + etiquetas multipalabra ('MRI-UTE (0.55 T)') como UNA
+  celda.
+- **Tabla 2 unida**: el agrupador salta bloques intercalados (PDF a dos
+  columnas) hasta 8 posiciones; fila '(n = N)' como cabecera; 'Rango A-B'
+  como fila.
+- **Fragmentos matemáticos** ('Z t1', 'A(±)', 'TEmáx') absorbidos cuando
+  hay una ecuación cerca (misma página, ±8).
+- **Ecuaciones-imagen borrosas** (PNG de 273×53): el job intenta
+  reconstruir LaTeX con GLM (texto lineal + fragmentos como contexto,
+  bonsai_formula + guarda anti-alucinación); si sale, KaTeX reemplaza la
+  imagen en el lector; si no, la imagen se muestra con
+  image-rendering:pixelated (nítido en line-art).
+- **El job resetea texto_md antes de procesar** — re-ejecutar regenera todo
+  (sin mezcla de corridas).
+- **BONSAI_API_KEY** (env/compose): los endpoints en la nube (api.z.ai)
+  requieren Authorization: Bearer; sin clave todo el paso LLM cae al
+  fallback determinista con warnings claros en el log.

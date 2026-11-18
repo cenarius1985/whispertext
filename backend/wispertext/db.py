@@ -52,9 +52,17 @@ async def init_db() -> None:
         await conn.execute(
             text("ALTER TABLE paragraphs ADD COLUMN IF NOT EXISTS texto_latex TEXT DEFAULT ''")
         )
-        # docs/12: markdown visual por párrafo (re-render LLM, opt-in)
+        # docs/12: markdown visual por párrafo (re-render LLM, opt-in).
+        # NULL = sin procesar, '' = bloque absorbido (oculto en el lector):
+        # la v3 creaba la columna con DEFAULT '' y no se distinguían.
         await conn.execute(
-            text("ALTER TABLE paragraphs ADD COLUMN IF NOT EXISTS texto_md TEXT DEFAULT ''")
+            text("ALTER TABLE paragraphs ADD COLUMN IF NOT EXISTS texto_md TEXT")
+        )
+        await conn.execute(
+            text("UPDATE paragraphs SET texto_md = NULL WHERE texto_md = ''")
+        )
+        await conn.execute(
+            text("ALTER TABLE paragraphs ALTER COLUMN texto_md DROP DEFAULT")
         )
         # RF-MF-08: formato de origen del documento
         await conn.execute(

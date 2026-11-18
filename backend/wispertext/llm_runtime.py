@@ -191,6 +191,10 @@ def verificar(
     cfg = get_llm_config()
     base = _normalizar(base_url) if base_url else cfg["base_url"]
     modelo = model or cfg["model"]
+    from wispertext.config import get_settings
+
+    key = get_settings().bonsai_api_key
+    auth = {"Authorization": f"Bearer {key}"} if key else {}
     t0 = time.perf_counter()
     try:
         r = httpx.post(
@@ -203,6 +207,7 @@ def verificar(
                 "max_tokens": 8,
                 "temperature": 0,
             },
+            headers=auth,
             timeout=timeout_s,
         )
         elapsed = round((time.perf_counter() - t0) * 1000)

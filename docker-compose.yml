@@ -38,6 +38,7 @@ services:
       # (ver rama `gpu`, afinada para RTX 4060 8 GB).
       BONSAI_BASE_URL: ${BONSAI_BASE_URL:-http://host.docker.internal:4687/v1}
       BONSAI_MODEL: ${BONSAI_MODEL:-ternary-bonsai-8b}
+      BONSAI_API_KEY: ${BONSAI_API_KEY:-}
       BONSAI_ENABLED: ${BONSAI_ENABLED:-true}
       PIPER_VOICE_DEFAULT: ${PIPER_VOICE_DEFAULT:-es_AR-daniela-high}
       PIPER_VOICES_EXTRA: ${PIPER_VOICES_EXTRA:-en_US-lessac-high,en_US-ryan-high}

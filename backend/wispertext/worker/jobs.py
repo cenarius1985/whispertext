@@ -31,12 +31,11 @@ from wispertext.worker.extractors import extract_any
 from wispertext.worker.musica import mezclar_con_musica, pista_fondo
 from wispertext.worker.render_md import (
     _llm_markdown,
-    es_fila_tabla,
     limpieza_determinista,
     lotes,
     matizar_inline,
+    pasada_determinista,
     preparar_bloques,
-    tabla_de_filas,
 )
 from wispertext.worker.tts import TTSError, ensure_audio_for_paragraph
 
@@ -710,47 +709,33 @@ async def run_render_md(ctx, job_id: str) -> None:
             )
             por_id = {str(p.id): p for p in active}
 
-            # Pasada determinista ANTES del LLM (bloques que no van al LLM):
-            #  · ecuaciones: la imagen ya contiene la fórmula → ""; con LaTeX
-            #    → $$..$$ (sin imagen, un nº huérfano "(3)" tampoco muestra nada).
-            #  · filas de tabla aplanadas (docs/12): consecutivas en página y
-            #    cercanas → UNA tabla Markdown en la primera, "" en el resto.
+            # Re-ejecutar = regenerar TODO: sin reset, los markdown de una
+            # corrida anterior (no NULL) se saltaban y quedaban mezclados.
             for p in active:
-                crudo = (p.texto_normalizado or p.texto_original or "").strip()
-                if p.tipo == "ecuacion":
-                    if p.texto_latex:
-                        p.texto_md = f"$${p.texto_latex}$$"
-                    else:
-                        p.texto_md = ""
+                p.texto_md = None
+            # Lo resoluble a ciegas (ecuaciones, tablas, fragmentos) se
+            # resuelve SIN LLM; el resto va por lotes (docs/12 §6).
+            pasada_determinista(active)
 
-            filas_idx = [
-                i
-                for i, p in enumerate(active)
-                if p.tipo != "ecuacion"
-                and es_fila_tabla((p.texto_normalizado or p.texto_original or "").strip())
-            ]
-            i = 0
-            while i < len(filas_idx):
-                grupo = [filas_idx[i]]
-                j = i + 1
-                while j < len(filas_idx):
-                    prev, act = filas_idx[j - 1], filas_idx[j]
-                    if (
-                        active[act].pagina == active[prev].pagina
-                        and act - prev <= 8
-                    ):
-                        grupo.append(act)
-                        j += 1
-                    else:
-                        break
-                filas = [
-                    (active[k].texto_normalizado or active[k].texto_original or "").strip()
-                    for k in grupo
-                ]
-                for k in grupo[1:]:
-                    active[k].texto_md = ""
-                active[grupo[0]].texto_md = tabla_de_filas(filas)
-                i = j
+            # Ecuaciones-imagen: los PNG nativos del PDF son diminutos
+            # (p.ej. 273×53) y al escalarlos se ven borrosos. Con el texto
+            # lineal + los fragmentos absorbidos alrededor, GLM reconstruye
+            # LaTeX que KaTeX renderiza nítido. Fail-soft: sin LaTeX plausible
+            # queda "" y se muestra la imagen.
+            await _etapa(session, job, "reconstruyendo_ecuaciones")
+            for i, p in enumerate(active):
+                if p.tipo != "ecuacion" or p.texto_latex or not p.imagen:
+                    continue
+                contexto = " ".join(
+                    (q.texto_normalizado or q.texto_original or "").strip()
+                    for q in active[max(0, i - 4) : i + 5]
+                    if q.tipo in ("ecuacion", "texto")
+                )[:900]
+                rec = bonsai_formula(contexto or (p.texto_normalizado or ""))
+                if rec and rec.get("latex") and _formula_plausible(
+                    contexto or (p.texto_normalizado or ""), rec["latex"]
+                ):
+                    p.texto_md = f"$${rec['latex']}$$"
             await session.commit()
 
             grupos = lotes(preparar_bloques(active))

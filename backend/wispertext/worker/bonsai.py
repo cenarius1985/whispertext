@@ -18,6 +18,12 @@ log = logging.getLogger("wispertext.bonsai")
 _JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
 
 
+def headers_auth() -> dict[str, str]:
+    """Authorization: Bearer si hay API key configurada (nube: z.ai, etc.)."""
+    key = get_settings().bonsai_api_key
+    return {"Authorization": f"Bearer {key}"} if key else {}
+
+
 def _extract_json(raw: str) -> dict | None:
     m = _JSON_RE.search(raw)
     if not m:
@@ -57,6 +63,7 @@ def bonsai_formula(texto_lineal: str) -> dict | None:
                 "temperature": 0,
                 "max_tokens": 500,
             },
+            headers=headers_auth(),
             timeout=settings.bonsai_formula_timeout_s,
         )
         resp.raise_for_status()
@@ -98,6 +105,7 @@ def bonsai_is_editorial(texto: str, contexto: str = "") -> bool | None:
                 "temperature": 0,
                 "max_tokens": 120,
             },
+            headers=headers_auth(),
             timeout=settings.bonsai_timeout_s,
         )
         resp.raise_for_status()
@@ -130,6 +138,7 @@ def bonsai_translate(texto: str, destino: str) -> str | None:
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.2,
             },
+            headers=headers_auth(),
             timeout=settings.bonsai_timeout_s * 3,
         )
         resp.raise_for_status()

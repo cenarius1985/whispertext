@@ -148,9 +148,9 @@ class Paragraph(Base):
     # LaTeX reconstruido por Bonsai para ecuaciones (render KaTeX en el lector)
     texto_latex: Mapped[str] = mapped_column(Text, default="")
     # Markdown visual enriquecido por LLM (docs/12): fórmulas $..$, tablas,
-    # énfasis. Solo presentación: "" = ocultar (fragmento absorbido). El
-    # texto original nunca se toca — sin esto el lector muestra texto_normal.
-    texto_md: Mapped[str] = mapped_column(Text, default="")
+    # énfasis. Solo presentación. NULL = sin procesar (el lector muestra el
+    # texto plano); "" = bloque absorbido por otro (ocultar).
+    texto_md: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     hash_normalizado: Mapped[str] = mapped_column(String(64), default="")
     idioma: Mapped[str] = mapped_column(String(8), default="es")
     # pending | synthesizing | ready | error | skipped

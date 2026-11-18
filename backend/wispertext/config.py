@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     bonsai_base_url: str = "http://host.docker.internal:4687/v1"
     bonsai_model: str = "ternary-bonsai-8b"
     bonsai_enabled: bool = True
+    # API key para endpoints en la nube (p.ej. api.z.ai con glm-5.3-flash):
+    # viaja como Authorization: Bearer … en TODAS las llamadas al LLM
+    bonsai_api_key: str = ""
     bonsai_timeout_s: float = 8.0
     # las fórmulas valen más espera: prompt+generación en CPU llevan ~15-40 s
     bonsai_formula_timeout_s: float = 90.0
