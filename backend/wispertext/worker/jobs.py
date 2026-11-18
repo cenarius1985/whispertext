@@ -720,21 +720,24 @@ async def run_render_md(ctx, job_id: str) -> None:
             # Ecuaciones-imagen: los PNG nativos del PDF son diminutos
             # (p.ej. 273×53) y al escalarlos se ven borrosos. Con el texto
             # lineal + los fragmentos absorbidos alrededor, GLM reconstruye
-            # LaTeX que KaTeX renderiza nítido. Fail-soft: sin LaTeX plausible
-            # queda "" y se muestra la imagen.
+            # LaTeX que KaTeX renderiza nítido. La guarda anti-alucinación se
+            # evalúa contra el TEXTO LINEAL de la ecuación (contra el contexto
+            # en prosa rechazaba todo). Fail-soft: sin LaTeX plausible queda
+            # "" y se muestra la imagen.
             await _etapa(session, job, "reconstruyendo_ecuaciones")
             for i, p in enumerate(active):
                 if p.tipo != "ecuacion" or p.texto_latex or not p.imagen:
                     continue
-                contexto = " ".join(
+                linear = (p.texto_normalizado or p.texto_original or "").strip()
+                fragmentos = " ".join(
                     (q.texto_normalizado or q.texto_original or "").strip()
                     for q in active[max(0, i - 4) : i + 5]
-                    if q.tipo in ("ecuacion", "texto")
-                )[:900]
-                rec = bonsai_formula(contexto or (p.texto_normalizado or ""))
-                if rec and rec.get("latex") and _formula_plausible(
-                    contexto or (p.texto_normalizado or ""), rec["latex"]
-                ):
+                    if q.tipo == "texto" and q.texto_md == ""
+                )[:600]
+                rec = bonsai_formula(
+                    f"{linear}\nFragmentos vecinos: {fragmentos}" if fragmentos else linear
+                )
+                if rec and rec.get("latex") and _formula_plausible(linear, rec["latex"]):
                     p.texto_md = f"$${rec['latex']}$$"
             await session.commit()
 

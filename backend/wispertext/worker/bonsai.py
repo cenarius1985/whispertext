@@ -65,13 +65,15 @@ def bonsai_formula(texto_lineal: str) -> dict | None:
                 "model": cfg["model"],
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0,
-                "max_tokens": 500,
+                # GLM 5.x razona: si no, el contenido llega vacío
+                "max_tokens": 2000,
             },
             headers=_headers(cfg),
             timeout=settings.bonsai_formula_timeout_s,
         )
         resp.raise_for_status()
-        raw = resp.json()["choices"][0]["message"]["content"]
+        msg = resp.json()["choices"][0]["message"]
+        raw = msg.get("content") or msg.get("reasoning_content") or ""
         parsed = _extract_json(raw)
         if not parsed:
             return None

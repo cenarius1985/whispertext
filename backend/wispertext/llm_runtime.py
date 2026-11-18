@@ -204,7 +204,9 @@ def verificar(
                 "messages": [
                     {"role": "user", "content": "Responde únicamente: OK"}
                 ],
-                "max_tokens": 8,
+                # GLM 5.x razona antes de responder: con 8 tokens el contenido
+                # llega vacío (todo se va en reasoning_content)
+                "max_tokens": 256,
                 "temperature": 0,
             },
             headers=auth,
@@ -217,7 +219,8 @@ def verificar(
                 "elapsed_ms": elapsed,
                 "detail": f"HTTP {r.status_code}: {r.text[:200]}",
             }
-        texto = (r.json()["choices"][0]["message"]["content"] or "").strip()
+        msg = r.json()["choices"][0]["message"]
+        texto = ((msg.get("content") or msg.get("reasoning_content") or "")).strip()
         return {
             "ok": bool(texto), "model": r.json().get("model", modelo),
             "respuesta": texto[:120], "elapsed_ms": elapsed,

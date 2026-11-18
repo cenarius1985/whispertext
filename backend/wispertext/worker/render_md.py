@@ -318,7 +318,9 @@ def _llm_markdown(bloques: list[tuple[str, str]]) -> dict[str, str] | None:
                 timeout=settings.render_llm_timeout_s,
             )
             resp.raise_for_status()
-            raw = resp.json()["choices"][0]["message"]["content"] or ""
+            msg = resp.json()["choices"][0]["message"]
+            # GLM 5.x razona: leer ambos campos (idem bonsai.py)
+            raw = (msg.get("content") or msg.get("reasoning_content") or "").strip()
             m = _JSON_RE.search(raw)
             if not m:
                 raise ValueError("respuesta sin JSON")
