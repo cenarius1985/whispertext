@@ -19,10 +19,13 @@ class Settings(BaseSettings):
     media_dir: Path = Path("./media")
     models_dir: Path = Path("./models")
 
-    # Bonsai (LLM externo, fail-soft — ADR-003)
+    # Bonsai (LLM externo, fail-soft — ADR-003). En rama local-glm el
+    # "Bonsai" es GLM/Z.AI (endpoint coding del plan, OpenAI-compatible),
+    # por lo que se agrega api_key opcional para nubes con auth.
     bonsai_base_url: str = "http://host.docker.internal:4687/v1"
     bonsai_model: str = "ternary-bonsai-8b"
     bonsai_enabled: bool = True
+    bonsai_api_key: str = ""  # vacio = sin auth (Bonsai local); GLM usa key
     bonsai_timeout_s: float = 8.0
     # las fórmulas valen más espera: prompt+generación en CPU llevan ~15-40 s
     bonsai_formula_timeout_s: float = 90.0

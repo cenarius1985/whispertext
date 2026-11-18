@@ -36,8 +36,11 @@ services:
       # main = CPU-first: Bonsai externo por defecto (fail-soft si no existe).
       # Con GPU NVIDIA, el coordinador detecta y escribe BONSAI_BASE_URL=http://bonsai:8080/v1
       # (ver rama `gpu`, afinada para RTX 4060 8 GB).
-      BONSAI_BASE_URL: ${BONSAI_BASE_URL:-http://host.docker.internal:4687/v1}
-      BONSAI_MODEL: ${BONSAI_MODEL:-ternary-bonsai-8b}
+      # Rama local-glm: el LLM es GLM/Z.AI (endpoint coding del plan).
+      # BONSAI_* es el nombre legacy que consume config.py/llm_runtime.py.
+      BONSAI_BASE_URL: ${BONSAI_BASE_URL:-https://api.z.ai/api/coding/paas/v4}
+      BONSAI_MODEL: ${BONSAI_MODEL:-glm-5.3-flash}
+      BONSAI_API_KEY: ${LLM_API_KEY:-}
       BONSAI_ENABLED: ${BONSAI_ENABLED:-true}
       PIPER_VOICE_DEFAULT: ${PIPER_VOICE_DEFAULT:-es_AR-daniela-high}
       PIPER_VOICES_EXTRA: ${PIPER_VOICES_EXTRA:-en_US-lessac-high,en_US-ryan-high}
@@ -90,7 +93,7 @@ services:
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
     ports:
-      - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"
+      - "127.0.0.1:${FRONTEND_PORT:-3001}:3000"
     depends_on:
       - api
     restart: unless-stopped
