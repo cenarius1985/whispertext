@@ -76,6 +76,7 @@ def get_llm_config() -> dict[str, Any]:
             "base_url": _normalizar(s.bonsai_base_url),
             "model": s.bonsai_model,
             "enabled": s.bonsai_enabled,
+            "api_key": s.bonsai_api_key or None,
             "source": "env",
         }
     else:
@@ -86,6 +87,7 @@ def get_llm_config() -> dict[str, Any]:
                 "base_url": _normalizar(base) if base else _normalizar(s.bonsai_base_url),
                 "model": (datos.get("model") or s.bonsai_model).strip(),
                 "enabled": bool(datos.get("enabled", s.bonsai_enabled)),
+                "api_key": datos.get("api_key") or s.bonsai_api_key or None,
                 "source": "archivo",
             }
         except Exception as exc:  # noqa: BLE001 — archivo corrupto → env
@@ -191,9 +193,7 @@ def verificar(
     cfg = get_llm_config()
     base = _normalizar(base_url) if base_url else cfg["base_url"]
     modelo = model or cfg["model"]
-    from wispertext.config import get_settings
-
-    key = get_settings().bonsai_api_key
+    key = cfg.get("api_key")
     auth = {"Authorization": f"Bearer {key}"} if key else {}
     t0 = time.perf_counter()
     try:

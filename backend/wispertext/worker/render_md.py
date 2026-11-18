@@ -20,7 +20,7 @@ import httpx
 from wispertext.config import get_settings
 from wispertext.llm_runtime import get_llm_config
 from wispertext.worker import cleaning
-from wispertext.worker.bonsai import headers_auth
+from wispertext.worker.bonsai import _headers
 
 log = logging.getLogger("wispertext.render_md")
 
@@ -314,7 +314,7 @@ def _llm_markdown(bloques: list[tuple[str, str]]) -> dict[str, str] | None:
                     "messages": [{"role": "user", "content": prompt}],
                     "temperature": 0,
                 },
-                headers=headers_auth(),
+                headers=_headers(cfg),
                 timeout=settings.render_llm_timeout_s,
             )
             resp.raise_for_status()

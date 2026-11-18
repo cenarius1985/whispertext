@@ -19,18 +19,16 @@ class Settings(BaseSettings):
     media_dir: Path = Path("./media")
     models_dir: Path = Path("./models")
 
-    # Bonsai (LLM externo, fail-soft — ADR-003)
+    # Bonsai (LLM externo, fail-soft — ADR-003). En rama local-glm el
+    # "Bonsai" es GLM/Z.AI (endpoint coding del plan, OpenAI-compatible),
+    # por lo que se agrega api_key opcional para nubes con auth.
     bonsai_base_url: str = "http://host.docker.internal:4687/v1"
     bonsai_model: str = "ternary-bonsai-8b"
     bonsai_enabled: bool = True
-    # API key para endpoints en la nube (p.ej. api.z.ai con glm-5.3-flash):
-    # viaja como Authorization: Bearer … en TODAS las llamadas al LLM
-    bonsai_api_key: str = ""
+    bonsai_api_key: str = ""  # vacio = sin auth (Bonsai local); GLM usa key
     bonsai_timeout_s: float = 8.0
     # las fórmulas valen más espera: prompt+generación en CPU llevan ~15-40 s
     bonsai_formula_timeout_s: float = 90.0
-    # re-render visual por lotes (docs/12): lotes con tablas tardan más
-    render_llm_timeout_s: float = 120.0
 
     # TTS — Piper (ADR-001)
     piper_voice_default: str = "es_AR-daniela-high"
