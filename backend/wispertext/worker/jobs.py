@@ -6,6 +6,7 @@ import uuid
 from pathlib import Path
 
 from sqlalchemy import func, select, update
+from sqlalchemy.orm import selectinload
 
 from wispertext.config import get_settings
 from wispertext.db import get_sessionmaker
@@ -28,6 +29,15 @@ from wispertext.worker.exporter import export_document_mp3
 from wispertext.worker.extraction import RawBlock
 from wispertext.worker.extractors import extract_any
 from wispertext.worker.musica import mezclar_con_musica, pista_fondo
+from wispertext.worker.render_md import (
+    _llm_markdown,
+    es_fila_tabla,
+    limpieza_determinista,
+    lotes,
+    matizar_inline,
+    preparar_bloques,
+    tabla_de_filas,
+)
 from wispertext.worker.tts import TTSError, ensure_audio_for_paragraph
 
 log = logging.getLogger("wispertext.jobs")
@@ -671,6 +681,95 @@ async def run_export_musica(ctx, job_id: str) -> None:
         except asyncio.CancelledError:
             if export:
                 export.estado = "error"
+            await _fail_cancelled(session, job, None)
+
+
+async def run_render_md(ctx, job_id: str) -> None:
+    """Re-render visual con LLM (docs/12): texto crudo → texto_md (Markdown
+    con LaTeX) por párrafo. Solo presentación: audio, orden e índices intactos.
+    Idempotente; fail-soft por lote (fallback determinista)."""
+    sm = get_sessionmaker()
+    async with sm() as session:
+        job = await session.get(Job, job_id)
+        if job is None:
+            return
+        doc = await session.get(Document, job.document_id)
+        try:
+            await _patch_job(session, job, estado="running")
+            active = (
+                (
+                    await session.execute(
+                        select(Paragraph)
+                        .options(selectinload(Paragraph.imagen))
+                        .where(Paragraph.document_id == doc.id, Paragraph.activo.is_(True))
+                        .order_by(Paragraph.indice)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            por_id = {str(p.id): p for p in active}
+
+            # Pasada determinista ANTES del LLM (bloques que no van al LLM):
+            #  · ecuaciones: la imagen ya contiene la fórmula → ""; con LaTeX
+            #    → $$..$$ (sin imagen, un nº huérfano "(3)" tampoco muestra nada).
+            #  · filas de tabla aplanadas (docs/12): consecutivas en página y
+            #    cercanas → UNA tabla Markdown en la primera, "" en el resto.
+            for p in active:
+                crudo = (p.texto_normalizado or p.texto_original or "").strip()
+                if p.tipo == "ecuacion":
+                    if p.texto_latex:
+                        p.texto_md = f"$${p.texto_latex}$$"
+                    else:
+                        p.texto_md = ""
+
+            filas_idx = [
+                i
+                for i, p in enumerate(active)
+                if p.tipo != "ecuacion"
+                and es_fila_tabla((p.texto_normalizado or p.texto_original or "").strip())
+            ]
+            i = 0
+            while i < len(filas_idx):
+                grupo = [filas_idx[i]]
+                j = i + 1
+                while j < len(filas_idx):
+                    prev, act = filas_idx[j - 1], filas_idx[j]
+                    if (
+                        active[act].pagina == active[prev].pagina
+                        and act - prev <= 8
+                    ):
+                        grupo.append(act)
+                        j += 1
+                    else:
+                        break
+                filas = [
+                    (active[k].texto_normalizado or active[k].texto_original or "").strip()
+                    for k in grupo
+                ]
+                for k in grupo[1:]:
+                    active[k].texto_md = ""
+                active[grupo[0]].texto_md = tabla_de_filas(filas)
+                i = j
+            await session.commit()
+
+            grupos = lotes(preparar_bloques(active))
+            job.total = len(grupos)
+            await session.commit()
+            for i, grupo in enumerate(grupos):
+                mds = _llm_markdown(grupo) or {}
+                for bid, crudo in grupo:
+                    p = por_id[bid]
+                    p.texto_md = matizar_inline(mds.get(bid) or limpieza_determinista(crudo))
+                job.hecho = i + 1
+                await session.commit()
+                await _job_event(job)
+
+            job.detalle = {**job.detalle, "lotes": len(grupos)}
+            await _patch_job(session, job, estado="done")
+        except Exception as exc:  # noqa: BLE001
+            await _fail(session, job, None, exc)
+        except asyncio.CancelledError:
             await _fail_cancelled(session, job, None)
 
 

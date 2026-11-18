@@ -61,6 +61,7 @@ class ParagraphOut(BaseModel):
     pagina: int
     tipo: str
     texto: str  # normalizado para mostrar
+    texto_md: str | None = None  # markdown visual LLM (docs/12); "" = ocultar
     latex: str | None = None  # ecuaciones reconstruidas por Bonsai (KaTeX)
     estado_audio: str
     skip_reason: str | None = None

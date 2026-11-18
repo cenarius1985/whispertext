@@ -52,6 +52,10 @@ async def init_db() -> None:
         await conn.execute(
             text("ALTER TABLE paragraphs ADD COLUMN IF NOT EXISTS texto_latex TEXT DEFAULT ''")
         )
+        # docs/12: markdown visual por párrafo (re-render LLM, opt-in)
+        await conn.execute(
+            text("ALTER TABLE paragraphs ADD COLUMN IF NOT EXISTS texto_md TEXT DEFAULT ''")
+        )
         # RF-MF-08: formato de origen del documento
         await conn.execute(
             text("ALTER TABLE documents ADD COLUMN IF NOT EXISTS formato VARCHAR(8) DEFAULT 'pdf'")

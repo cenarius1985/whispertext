@@ -15,6 +15,7 @@ import {
   reprocessDocument,
   replaceDocument,
   setDocCategories,
+  startRenderMd,
   uploadCover,
 } from "@/lib/api";
 import { useAudioExport } from "@/components/useAudioExport";
@@ -232,6 +233,16 @@ export default function DocumentCard({
             >
               Editar audio
             </Link>
+            <button
+              disabled={busy}
+              onClick={() =>
+                acciones(() => startRenderMd(doc.id).then(() => undefined))
+              }
+              className="block w-full px-4 py-2 text-left hover:bg-slate-50"
+              title="Limpia el texto con IA: fórmulas en LaTeX, tablas y formato (tarda ~1-3 min)"
+            >
+              ✨ Mejorar visualización (IA)
+            </button>
             <button
               disabled={busy}
               onClick={() => {

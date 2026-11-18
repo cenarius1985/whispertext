@@ -9,6 +9,7 @@ from wispertext.config import get_settings
 from wispertext.worker.jobs import (
     run_export,
     run_export_musica,
+    run_render_md,
     run_ingest,
     run_reprocess,
     run_replace,
@@ -53,6 +54,7 @@ class WorkerSettings:
         run_reprocess,
         run_export,
         run_export_musica,
+        run_render_md,
         synthesize_paragraph_task,
     )
     on_startup = startup

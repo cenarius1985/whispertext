@@ -147,6 +147,10 @@ class Paragraph(Base):
     texto_hablado: Mapped[str] = mapped_column(Text, default="")
     # LaTeX reconstruido por Bonsai para ecuaciones (render KaTeX en el lector)
     texto_latex: Mapped[str] = mapped_column(Text, default="")
+    # Markdown visual enriquecido por LLM (docs/12): fórmulas $..$, tablas,
+    # énfasis. Solo presentación: "" = ocultar (fragmento absorbido). El
+    # texto original nunca se toca — sin esto el lector muestra texto_normal.
+    texto_md: Mapped[str] = mapped_column(Text, default="")
     hash_normalizado: Mapped[str] = mapped_column(String(64), default="")
     idioma: Mapped[str] = mapped_column(String(8), default="es")
     # pending | synthesizing | ready | error | skipped

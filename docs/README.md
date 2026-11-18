@@ -20,4 +20,5 @@
 - [GPU NVIDIA — Bonsai 2 27B 100 % en VRAM (rama `gpu`)](09-gpu-bonsai.md)
 - [LLM configurable en caliente (Ajustes)](10-llm-configurable.md)
 - [Música de fondo en exports desde YouTube](11-musica-de-fondo.md)
+- [Re-render visual con LLM: Markdown + LaTeX](12-render-markdown-llm.md)
 - [Runbook — Primer arranque y provisión de voces (red con HuggingFace bloqueada)](07-runbook-primer-arranque.md)

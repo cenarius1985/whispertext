@@ -65,6 +65,7 @@ async def list_paragraphs(doc_id: str, session: AsyncSession = Depends(get_sessi
                 pagina=p.pagina,
                 tipo=p.tipo,
                 texto=p.texto_normalizado or p.texto_original,
+                texto_md=p.texto_md or None,
                 latex=p.texto_latex or None,
                 estado_audio=p.estado_audio,
                 skip_reason=p.skip_reason,

@@ -1,18 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import Latex from "@/components/Latex";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Doc,
   Paragraph,
   fetchDoc,
+  fetchJob,
   fetchParagraphs,
   mediaUrl,
   saveProgress,
+  startRenderMd,
   synthesizeParagraph,
 } from "@/lib/api";
 import { useDocumentEvents } from "@/lib/useDocumentEvents";
+import MarkdownText from "@/components/MarkdownText";
 import PlayerPanel from "@/components/PlayerPanel";
 import { useAudioExport } from "@/components/useAudioExport";
 
@@ -28,6 +30,49 @@ export default function ReaderView({ docId }: { docId: string }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const exporter = useAudioExport();
+  const [renderJob, setRenderJob] = useState<{
+    estado: string;
+    hecho: number;
+    total: number;
+  } | null>(null);
+  const renderTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (renderTimer.current) clearInterval(renderTimer.current);
+    },
+    []
+  );
+
+  /** Re-render visual con IA (docs/12): lanza el job y recarga al terminar. */
+  const mejorarVisual = async () => {
+    if (renderJob) return;
+    try {
+      const jobId = await startRenderMd(docId);
+      setRenderJob({ estado: "running", hecho: 0, total: 0 });
+      renderTimer.current = setInterval(async () => {
+        try {
+          const job = await fetchJob(jobId);
+          setRenderJob({ estado: job.estado, hecho: job.hecho, total: job.total });
+          if (job.estado === "done") {
+            clearInterval(renderTimer.current!);
+            renderTimer.current = null;
+            setRenderJob(null);
+            await cargar();
+          } else if (job.estado === "error") {
+            clearInterval(renderTimer.current!);
+            renderTimer.current = null;
+            setRenderJob(null);
+            window.alert(job.error || "el re-render falló");
+          }
+        } catch {
+          /* error de red transitorio: el próximo tick reintenta */
+        }
+      }, 2000);
+    } catch (e) {
+      window.alert((e as Error).message);
+    }
+  };
 
   const cargar = useCallback(async () => {
     try {
@@ -188,10 +233,27 @@ export default function ReaderView({ docId }: { docId: string }) {
           );
         })()}
 
+        {renderJob && (
+          <div className="mb-3 flex items-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-3 py-2 text-sm text-brand-700">
+            <span className="h-3 w-3 animate-spin rounded-full border-2 border-brand-200 border-t-brand-600" />
+            Mejorando la visualización con IA
+            {renderJob.total > 0 && (
+              <span className="text-xs text-brand-500">
+                · lote {renderJob.hecho}/{renderJob.total}
+              </span>
+            )}
+          </div>
+        )}
+
         <div className="space-y-1">
           {paragraphs.map((p) => {
             const esActual = p.id === currentId;
             const esSkipped = p.estado_audio === "skipped";
+            // docs/12: bloque absorbido por otro (tabla juntada, nº de
+            // ecuación huérfano) — sin imagen no hay nada que mostrar
+            if (p.texto_md === "" && !p.imagen_url) return null;
+            const esVisual =
+              (p.tipo === "figura" || p.tipo === "ecuacion") && p.imagen_url;
             return (
               <div
                 key={p.id}
@@ -206,49 +268,45 @@ export default function ReaderView({ docId }: { docId: string }) {
                   esSkipped ? "opacity-40" : "",
                 ].join(" ")}
               >
-                {p.tipo === "figura" && p.imagen_url && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={mediaUrl(p.imagen_url)}
-                    alt={p.texto || "figura"}
-                    className="mx-auto mb-2 max-h-80 rounded-lg ring-1 ring-slate-200"
-                  />
-                )}
-                {p.tipo === "ecuacion" &&
-                  (p.latex ? (
-                    <Latex tex={p.latex} />
-                  ) : (
-                    p.imagen_url && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={mediaUrl(p.imagen_url)}
-                        alt="ecuación"
-                        className="mx-auto mb-2 max-h-40 rounded-lg ring-1 ring-slate-200"
-                      />
-                    )
-                  ))}
-                <p
-                  className={[
-                    "flex-1 text-[15px] leading-7",
-                    p.tipo === "titulo" ? "font-semibold text-slate-900" : "text-slate-700",
-                    p.tipo === "ecuacion" && p.latex ? "sr-only" : "",
-                  ].join(" ")}
-                >
-                  {p.tipo === "ecuacion" && p.latex
-                    ? p.texto
-                    : p.texto || (
+                {esVisual ? (
+                  <figure className="mx-auto w-full max-w-xl text-center">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={mediaUrl(p.imagen_url)}
+                      alt={p.texto || (p.tipo === "figura" ? "figura" : "ecuación")}
+                      className="mx-auto max-h-96 rounded-lg ring-1 ring-slate-200"
+                    />
+                    <MarkdownText
+                      md={p.texto_md}
+                      fallback={p.texto}
+                      className="mt-1 text-xs leading-5 text-slate-500"
+                    />
+                  </figure>
+                ) : (
+                  <MarkdownText
+                    md={p.texto_md ?? (p.latex ? `$$${p.latex}$$` : null)}
+                    fallback={
+                      p.texto || (
                         <em className="text-xs text-slate-400">
                           {p.tipo === "figura" || p.tipo === "ecuacion"
                             ? "sin descripción"
                             : "—"}
                         </em>
-                      )}
-                  {esSkipped && (
-                    <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-slate-400">
-                      saltado · {p.skip_reason}
-                    </span>
-                  )}
-                </p>
+                      )
+                    }
+                    className={[
+                      "flex-1 text-[15px]",
+                      p.tipo === "titulo"
+                        ? "font-semibold text-slate-900"
+                        : "text-slate-700",
+                    ].join(" ")}
+                  />
+                )}
+                {esSkipped && (
+                  <span className="mt-1 shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-slate-400">
+                    saltado · {p.skip_reason}
+                  </span>
+                )}
                 {/* Audio por párrafo, a la derecha (RF-06) */}
                 <button
                   onClick={(e) => {
@@ -294,6 +352,8 @@ export default function ReaderView({ docId }: { docId: string }) {
         onPrev={() => saltar(-1)}
         onNext={() => saltar(1)}
         onExport={() => doc && exporter.start(doc)}
+        onMejorarVisual={mejorarVisual}
+        mejorando={!!renderJob}
       />
 
       <audio

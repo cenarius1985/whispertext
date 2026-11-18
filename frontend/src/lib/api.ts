@@ -38,6 +38,7 @@ export interface Paragraph {
   pagina: number;
   tipo: string;
   texto: string;
+  texto_md?: string | null;
   latex?: string | null;
   estado_audio: string;
   skip_reason: string | null;
@@ -66,8 +67,10 @@ export interface ExportRow {
 
 export interface JobOut {
   id: string;
-  tipo: string; // ingest | export | export_musica | …
+  tipo: string; // ingest | export | export_musica | render_md | …
   estado: string; // queued | running | done | error
+  total: number;
+  hecho: number;
   detalle: { export_id?: string; etapa?: string } & Record<string, unknown>;
   error: string | null;
 }
@@ -197,6 +200,14 @@ export async function startExport(
 
 export async function fetchJob(jobId: string): Promise<JobOut> {
   return json(await fetch(`${API_URL}/api/jobs/${jobId}`, { cache: "no-store" }));
+}
+
+/** Re-render visual con IA (docs/12): texto → Markdown+LaTeX por párrafo. */
+export async function startRenderMd(id: string): Promise<string> {
+  const job = await json<JobOut>(
+    await fetch(`${API_URL}/api/documents/${id}/render_md`, { method: "POST" })
+  );
+  return job.id;
 }
 
 /** Dispara la descarga en el navegador (el backend manda Content-Disposition). */

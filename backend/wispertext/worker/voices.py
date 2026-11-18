@@ -38,10 +38,31 @@ def ensure_voices_downloaded() -> None:
             continue
         for url, dest in missing:
             log.info("descargando %s → %s", url, dest)
-            with httpx.stream("GET", url, follow_redirects=True, timeout=300) as resp:
-                resp.raise_for_status()
-                tmp = piper_dir / f"{dest}.part"
-                with open(tmp, "wb") as fh:
-                    for chunk in resp.iter_bytes(1 << 20):
-                        fh.write(chunk)
-                tmp.rename(piper_dir / dest)
+            # connect corto: con HF bloqueado (SYN dropeado) un timeout largo
+            # deja el worker 10+ min sin consumir jobs (bug 2026-11-18).
+            # Fallo por archivo = aviso y sigue: el resto del stack anda y la
+            # voz se provisiona a mano (docs/07, RPM de OpenMandriva).
+            try:
+                with httpx.stream(
+                    "GET",
+                    url,
+                    follow_redirects=True,
+                    timeout=httpx.Timeout(connect=8, read=60, write=60, pool=8),
+                ) as resp:
+                    resp.raise_for_status()
+                    tmp = piper_dir / f"{dest}.part"
+                    try:
+                        with open(tmp, "wb") as fh:
+                            for chunk in resp.iter_bytes(1 << 20):
+                                fh.write(chunk)
+                    except BaseException:
+                        tmp.unlink(missing_ok=True)
+                        raise
+                    tmp.rename(piper_dir / dest)
+            except Exception as exc:  # noqa: BLE001 — provisión, no pipeline
+                log.warning(
+                    "voz %s quedó incompleta (%s): HF inalcanzable. Provisiona "
+                    "con docs/07 (RPM). El resto del worker sigue normal.",
+                    clave,
+                    type(exc).__name__,
+                )

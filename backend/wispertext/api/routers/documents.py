@@ -334,6 +334,24 @@ async def export_document(
     return job
 
 
+@router.post("/{doc_id}/render_md", response_model=JobOut, status_code=202)
+async def render_markdown(
+    doc_id: str,
+    session: AsyncSession = Depends(get_session),
+    arq: ArqRedis = Depends(get_arq),
+):
+    """Re-render visual con LLM: texto_md (Markdown+LaTeX) por párrafo
+    (docs/12). Solo presentación — no toca audio ni orden."""
+    doc = await session.get(Document, _uuid(doc_id))
+    if doc is None:
+        raise HTTPException(404, "documento no existe")
+    job = Job(document_id=doc.id, tipo="render_md", estado="queued", detalle={})
+    session.add(job)
+    await session.commit()
+    await arq.enqueue_job("run_render_md", str(job.id))
+    return job
+
+
 @router.get("/{doc_id}/exports", response_model=list[ExportOut])
 async def list_exports(doc_id: str, session: AsyncSession = Depends(get_session)):
     doc = await session.get(Document, _uuid(doc_id))

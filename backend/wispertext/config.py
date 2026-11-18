@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     bonsai_timeout_s: float = 8.0
     # las fórmulas valen más espera: prompt+generación en CPU llevan ~15-40 s
     bonsai_formula_timeout_s: float = 90.0
+    # re-render visual por lotes (docs/12): lotes con tablas tardan más
+    render_llm_timeout_s: float = 120.0
 
     # TTS — Piper (ADR-001)
     piper_voice_default: str = "es_AR-daniela-high"

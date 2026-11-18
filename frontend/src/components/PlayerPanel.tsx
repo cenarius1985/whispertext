@@ -18,6 +18,8 @@ interface Props {
   onPrev: () => void;
   onNext: () => void;
   onExport: () => void;
+  onMejorarVisual?: () => void;
+  mejorando?: boolean;
 }
 
 const VELOCIDADES = [0.75, 1, 1.25, 1.5, 2];
@@ -119,6 +121,16 @@ export default function PlayerPanel(p: Props) {
         >
           Editar audio · música de fondo
         </Link>
+        {p.onMejorarVisual && (
+          <button
+            onClick={p.onMejorarVisual}
+            disabled={p.mejorando}
+            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+            title="Limpia el texto con IA: fórmulas en LaTeX, tablas y formato"
+          >
+            {p.mejorando ? "Mejorando visualización…" : "✨ Mejorar visualización (IA)"}
+          </button>
+        )}
         <p className="text-[11px] leading-4 text-slate-400">
           Atajos: espacio play/pausa · ↑/↓ párrafo. El párrafo en reproducción queda
           resaltado a la izquierda.
